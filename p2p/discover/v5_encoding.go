@@ -47,7 +47,7 @@ import (
 const (
 	p_unknownV5        = byte(255) // any non-decryptable packet
 	p_whoareyouV5      = byte(254) // the WHOAREYOU packet
-	p_pingV5      byte = iota + 1
+	p_pingV5      byte = iota - 1
 	p_pongV5
 	p_findnodeV5
 	p_nodesV5
@@ -184,8 +184,8 @@ type authHeader struct {
 
 type authHeaderList struct {
 	Auth         []byte   // authentication info of packet
-	Scheme       string   // name of encryption/authentication scheme
 	IDNonce      [32]byte // IDNonce of WHOAREYOU
+	Scheme       string   // name of encryption/authentication scheme
 	EphemeralKey []byte   // ephemeral public key
 	Response     []byte   // encrypted authResponse
 }
