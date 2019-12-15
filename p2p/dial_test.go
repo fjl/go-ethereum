@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
+// +build none
+
 package p2p
 
 import (
@@ -109,7 +111,7 @@ func TestDialStateDynDial(t *testing.T) {
 					&discoverTask{results: []*enode.Node{
 						newNode(uintID(2), nil), // this one is already connected and not dialed.
 						newNode(uintID(3), nil),
-						newNode(uintID(4), nil),
+w						newNode(uintID(4), nil),
 						newNode(uintID(5), nil),
 						newNode(uintID(6), nil), // these are not tried because max dyn dials is 5
 						newNode(uintID(7), nil), // ...
@@ -303,14 +305,6 @@ func TestDialStateDynDialBootnode(t *testing.T) {
 			},
 		},
 	})
-}
-
-func newNode(id enode.ID, ip net.IP) *enode.Node {
-	var r enr.Record
-	if ip != nil {
-		r.Set(enr.IP(ip))
-	}
-	return enode.SignNull(&r, id)
 }
 
 // // This test checks that candidates that do not match the netrestrict list are not dialed.

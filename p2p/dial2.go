@@ -18,40 +18,60 @@ package p2p
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
+var (
+	errSelf             = errors.New("is self")
+	errAlreadyDialing   = errors.New("already dialing")
+	errAlreadyConnected = errors.New("already connected")
+	errRecentlyDialed   = errors.New("recently dialed")
+	errNotWhitelisted   = errors.New("not contained in netrestrict whitelist")
+)
+
 type dialer2 struct {
-	cfg *Config
+	cfg    *Config
+	log    log.Logger
+	server *Server
 
 	cancel    context.CancelFunc
 	ctx       context.Context
 	nodesIn   chan *enode.Node
-	doneCh    chan *dialTask
+	doneCh    chan *dialTask2
 	peersetCh chan map[enode.ID]struct{}
 	clock     mclock.Clock
 
-	dialing map[enode.ID]*dialTask
-	static  map[enode.ID]*dialTask
+	dialing map[enode.ID]*dialTask2
+	static  map[enode.ID]*dialTask2
 	peers   map[enode.ID]struct{}
 	history expHeap
 
 	wg sync.WaitGroup
 }
 
-func newDialer2(it enode.Iterator) *dialer2 {
+func newDialer2(cfg *Config, it enode.Iterator) *dialer2 {
 	d := &dialer2{
-		dialing: make(map[enode.ID]*dialTask),
-		static:  make(map[enode.ID]*dialTask),
+		cfg:     cfg,
+		log:     cfg.Logger,
+		dialing: make(map[enode.ID]*dialTask2),
+		static:  make(map[enode.ID]*dialTask2),
 		peers:   make(map[enode.ID]struct{}),
 		nodesIn: make(chan *enode.Node),
-		doneCh:  make(chan *dialTask),
+		doneCh:  make(chan *dialTask2),
 	}
 	d.ctx, d.cancel = context.WithCancel(context.Background())
+	if d.log == nil {
+		d.log = log.Root()
+	}
+
 	d.wg.Add(2)
 	go d.readNodes(it)
 	go d.loop(it)
@@ -80,7 +100,7 @@ func (d *dialer2) loop(it enode.Iterator) {
 		select {
 		case node := <-nodesCh:
 			if err := d.checkDial(node); err == nil {
-				task := &dialTask{flags: dynDialedConn, dest: node}
+				task := &dialTask2{flags: dynDialedConn, dest: node}
 				d.startDial(task)
 			}
 
@@ -93,8 +113,8 @@ func (d *dialer2) loop(it enode.Iterator) {
 		case <-historyExp:
 			historyTimer.Stop()
 			now := d.clock.Now()
-			d.history.expire(time.Now())
-			next := d.history.nextExpiry().Sub(now)
+			d.history.expire(now)
+			next := time.Duration(d.history.nextExpiry() - now)
 			historyTimer = d.clock.AfterFunc(next, func() { historyExp <- struct{}{} })
 
 		case <-d.ctx.Done():
@@ -146,23 +166,103 @@ func (d *dialer2) checkDial(n *enode.Node) error {
 	return nil
 }
 
-func (d *dialer2) startDial(task *dialTask) {
+func (d *dialer2) startDial(task *dialTask2) {
 	hkey := string(task.dest.ID().Bytes())
-	d.history.add(hkey, time.Now().Add(dialHistoryExpiration))
+	d.history.add(hkey, d.clock.Now().Add(dialHistoryExpiration))
 	d.dialing[task.dest.ID()] = task
 	go func() {
-		task.Do()
+		task.run(d)
 		d.doneCh <- task
 	}()
 }
 
 func (d *dialer2) startStaticDials() {
 	for id, task := range d.static {
-		if _, ok := d.peers[task.dest.ID()]; ok {
+		if _, ok := d.peers[id]; ok {
 			continue
 		}
 		if !d.atCapacity() {
 			d.startDial(task)
 		}
 	}
+}
+
+// A dialTask2 is generated for each node that is dialed. Its
+// fields cannot be accessed while the task is running.
+type dialTask2 struct {
+	flags        connFlag
+	dest         *enode.Node
+	lastResolved time.Time
+	resolveDelay time.Duration
+}
+
+type dialError struct {
+	error
+}
+
+func (t *dialTask2) run(d *dialer2) {
+	if t.dest.Incomplete() {
+		if !t.resolve(d) {
+			return
+		}
+	}
+	err := t.dial(d, t.dest)
+	if err != nil {
+		d.log.Trace("Dial error", "task", t, "err", err)
+		// Try resolving the ID of static nodes if dialing failed.
+		if _, ok := err.(*dialError); ok && t.flags&staticDialedConn != 0 {
+			if t.resolve(d) {
+				t.dial(d, t.dest)
+			}
+		}
+	}
+}
+
+// resolve attempts to find the current endpoint for the destination
+// using discovery.
+//
+// Resolve operations are throttled with backoff to avoid flooding the
+// discovery network with useless queries for nodes that don't exist.
+// The backoff delay resets when the node is found.
+func (t *dialTask2) resolve(d *dialer2) bool {
+	if d.server.staticNodeResolver == nil {
+		d.log.Debug("Can't resolve node", "id", t.dest.ID(), "err", "discovery is disabled")
+		return false
+	}
+	if t.resolveDelay == 0 {
+		t.resolveDelay = initialResolveDelay
+	}
+	if time.Since(t.lastResolved) < t.resolveDelay {
+		return false
+	}
+	resolved := d.server.staticNodeResolver.Resolve(t.dest)
+	t.lastResolved = time.Now()
+	if resolved == nil {
+		t.resolveDelay *= 2
+		if t.resolveDelay > maxResolveDelay {
+			t.resolveDelay = maxResolveDelay
+		}
+		d.log.Debug("Resolving node failed", "id", t.dest.ID(), "newdelay", t.resolveDelay)
+		return false
+	}
+	// The node was found.
+	t.resolveDelay = initialResolveDelay
+	t.dest = resolved
+	d.log.Debug("Resolved node", "id", t.dest.ID(), "addr", &net.TCPAddr{IP: t.dest.IP(), Port: t.dest.TCP()})
+	return true
+}
+
+// dial performs the actual connection attempt.
+func (t *dialTask2) dial(d *dialer2, dest *enode.Node) error {
+	fd, err := d.server.Dialer.Dial(dest)
+	if err != nil {
+		return &dialError{err}
+	}
+	mfd := newMeteredConn(fd, false, &net.TCPAddr{IP: dest.IP(), Port: dest.TCP()})
+	return d.server.SetupConn(mfd, t.flags, dest)
+}
+
+func (t *dialTask2) String() string {
+	id := t.dest.ID()
+	return fmt.Sprintf("%v %x %v:%d", t.flags, id[:8], t.dest.IP(), t.dest.TCP())
 }

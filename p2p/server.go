@@ -156,6 +156,8 @@ type Config struct {
 
 	// Logger is a custom logger to use with the p2p.Server.
 	Logger log.Logger `toml:",omitempty"`
+
+	clock mclock.Clock
 }
 
 // Server manages all peer connections.
@@ -437,6 +439,9 @@ func (srv *Server) Start() (err error) {
 	if srv.log == nil {
 		srv.log = log.Root()
 	}
+	if srv.clock == nil {
+		srv.clock = mclock.System{}
+	}
 	if srv.NoDial && srv.ListenAddr == "" {
 		srv.log.Warn("P2P server will be useless, neither dialing nor listening")
 	}
@@ -478,7 +483,7 @@ func (srv *Server) Start() (err error) {
 	}
 
 	dynPeers := srv.maxDialedConns()
-	dialer := newDialState(srv.localnode.ID(), dynPeers, &srv.Config)
+	dialer := newDialer2(&srv.Config, srv.discmix)
 	srv.loopWG.Add(1)
 	go srv.run(dialer)
 	return nil
@@ -632,14 +637,7 @@ func (srv *Server) setupListening() error {
 	return nil
 }
 
-type dialer interface {
-	newTasks(running int, peers map[enode.ID]*Peer, now time.Time) []task
-	taskDone(task, time.Time)
-	addStatic(*enode.Node)
-	removeStatic(*enode.Node)
-}
-
-func (srv *Server) run(dialstate dialer) {
+func (srv *Server) run(dialstate *dialer2) {
 	srv.log.Info("Started P2P networking", "self", srv.localnode.Node().URLv4())
 	defer srv.loopWG.Done()
 	defer srv.nodedb.Close()
@@ -649,57 +647,17 @@ func (srv *Server) run(dialstate dialer) {
 		peers        = make(map[enode.ID]*Peer)
 		inboundCount = 0
 		trusted      = make(map[enode.ID]bool, len(srv.TrustedNodes))
-		taskdone     = make(chan task, maxActiveDialTasks)
-		tick         = time.NewTicker(30 * time.Second)
-		runningTasks []task
-		queuedTasks  []task // tasks that can't run yet
 	)
-	defer tick.Stop()
-
 	// Put trusted nodes into a map to speed up checks.
 	// Trusted peers are loaded on startup or added via AddTrustedPeer RPC.
 	for _, n := range srv.TrustedNodes {
 		trusted[n.ID()] = true
 	}
 
-	// removes t from runningTasks
-	delTask := func(t task) {
-		for i := range runningTasks {
-			if runningTasks[i] == t {
-				runningTasks = append(runningTasks[:i], runningTasks[i+1:]...)
-				break
-			}
-		}
-	}
-	// starts until max number of active tasks is satisfied
-	startTasks := func(ts []task) (rest []task) {
-		i := 0
-		for ; len(runningTasks) < maxActiveDialTasks && i < len(ts); i++ {
-			t := ts[i]
-			srv.log.Trace("New dial task", "task", t)
-			go func() { t.Do(srv); taskdone <- t }()
-			runningTasks = append(runningTasks, t)
-		}
-		return ts[i:]
-	}
-	scheduleTasks := func() {
-		// Start from queue first.
-		queuedTasks = append(queuedTasks[:0], startTasks(queuedTasks)...)
-		// Query dialer for new tasks and start as many as possible now.
-		if len(runningTasks) < maxActiveDialTasks {
-			nt := dialstate.newTasks(len(runningTasks)+len(queuedTasks), peers, time.Now())
-			queuedTasks = append(queuedTasks, startTasks(nt)...)
-		}
-	}
-
 running:
 	for {
-		scheduleTasks()
 
 		select {
-		case <-tick.C:
-			// This is just here to ensure the dial scheduler runs occasionally.
-
 		case <-srv.quit:
 			// The server was stopped. Run the cleanup logic.
 			break running
@@ -709,17 +667,17 @@ running:
 			// ephemeral static peer list. Add it to the dialer,
 			// it will keep the node connected.
 			srv.log.Trace("Adding static node", "node", n)
-			dialstate.addStatic(n)
+			// dialstate.addStatic(n)
 
 		case n := <-srv.removestatic:
 			// This channel is used by RemovePeer to send a
 			// disconnect request to a peer and begin the
 			// stop keeping the node connected.
 			srv.log.Trace("Removing static node", "node", n)
-			dialstate.removeStatic(n)
-			if p, ok := peers[n.ID()]; ok {
-				p.Disconnect(DiscRequested)
-			}
+			// dialstate.removeStatic(n)
+			// if p, ok := peers[n.ID()]; ok {
+			// 	p.Disconnect(DiscRequested)
+			// }
 
 		case n := <-srv.addtrusted:
 			// This channel is used by AddTrustedPeer to add an enode
@@ -746,14 +704,6 @@ running:
 			// This channel is used by Peers and PeerCount.
 			op(peers)
 			srv.peerOpDone <- struct{}{}
-
-		case t := <-taskdone:
-			// A task got done. Tell dialstate about it so it
-			// can update its state and remove it from the active
-			// tasks list.
-			srv.log.Trace("Dial task done", "task", t)
-			dialstate.taskDone(t, time.Now())
-			delTask(t)
 
 		case c := <-srv.checkpointPostHandshake:
 			// A connection has passed the encryption handshake so
@@ -822,7 +772,7 @@ running:
 	// is closed.
 	for len(peers) > 0 {
 		p := <-srv.delpeer
-		p.log.Trace("<-delpeer (spindown)", "remainingTasks", len(runningTasks))
+		p.log.Trace("<-delpeer (spindown)")
 		delete(peers, p.ID())
 	}
 }
@@ -935,18 +885,20 @@ func (srv *Server) listenLoop() {
 }
 
 func (srv *Server) checkInboundConn(fd net.Conn, remoteIP net.IP) error {
-	if remoteIP != nil {
-		// Reject connections that do not match NetRestrict.
-		if srv.NetRestrict != nil && !srv.NetRestrict.Contains(remoteIP) {
-			return fmt.Errorf("not whitelisted in NetRestrict")
-		}
-		// Reject Internet peers that try too often.
-		srv.inboundHistory.expire(time.Now())
-		if !netutil.IsLAN(remoteIP) && srv.inboundHistory.contains(remoteIP.String()) {
-			return fmt.Errorf("too many attempts")
-		}
-		srv.inboundHistory.add(remoteIP.String(), time.Now().Add(inboundThrottleTime))
+	if remoteIP == nil {
+		return nil
 	}
+	// Reject connections that do not match NetRestrict.
+	if srv.NetRestrict != nil && !srv.NetRestrict.Contains(remoteIP) {
+		return fmt.Errorf("not whitelisted in NetRestrict")
+	}
+	// Reject Internet peers that try too often.
+	now := srv.clock.Now()
+	srv.inboundHistory.expire(now)
+	if !netutil.IsLAN(remoteIP) && srv.inboundHistory.contains(remoteIP.String()) {
+		return fmt.Errorf("too many attempts")
+	}
+	srv.inboundHistory.add(remoteIP.String(), now.Add(inboundThrottleTime))
 	return nil
 }
 

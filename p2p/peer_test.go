@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
 var discard = Protocol{
@@ -43,6 +45,14 @@ var discard = Protocol{
 			}
 		}
 	},
+}
+
+func newNode(id enode.ID, ip net.IP) *enode.Node {
+	var r enr.Record
+	if ip != nil {
+		r.Set(enr.IP(ip))
+	}
+	return enode.SignNull(&r, id)
 }
 
 func testPeer(protos []Protocol) (func(), *conn, *Peer, <-chan error) {
