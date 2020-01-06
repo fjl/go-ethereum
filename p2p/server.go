@@ -185,13 +185,12 @@ type Server struct {
 	ntab      *discover.UDPv4
 	DiscV5    *discv5.Network
 	discmix   *enode.FairMix
+	dialer    *dialer2
 
 	staticNodeResolver nodeResolver
 
 	// Channels into the run loop.
 	quit                    chan struct{}
-	addstatic               chan *enode.Node
-	removestatic            chan *enode.Node
 	addtrusted              chan *enode.Node
 	removetrusted           chan *enode.Node
 	peerOp                  chan peerOpFunc
@@ -334,18 +333,12 @@ func (srv *Server) PeerCount() int {
 // server is shut down. If the connection fails for any reason, the server will
 // attempt to reconnect the peer.
 func (srv *Server) AddPeer(node *enode.Node) {
-	select {
-	case srv.addstatic <- node:
-	case <-srv.quit:
-	}
+	srv.dialer.addStatic(node)
 }
 
 // RemovePeer disconnects from the given node
 func (srv *Server) RemovePeer(node *enode.Node) {
-	select {
-	case srv.removestatic <- node:
-	case <-srv.quit:
-	}
+	srv.dialer.removeStatic(node)
 }
 
 // AddTrustedPeer adds the given node to a reserved whitelist which allows the
@@ -463,8 +456,6 @@ func (srv *Server) Start() (err error) {
 	srv.delpeer = make(chan peerDrop)
 	srv.checkpointPostHandshake = make(chan *conn)
 	srv.checkpointAddPeer = make(chan *conn)
-	srv.addstatic = make(chan *enode.Node)
-	srv.removestatic = make(chan *enode.Node)
 	srv.addtrusted = make(chan *enode.Node)
 	srv.removetrusted = make(chan *enode.Node)
 	srv.peerOp = make(chan peerOpFunc)
@@ -483,9 +474,10 @@ func (srv *Server) Start() (err error) {
 	}
 
 	dynPeers := srv.maxDialedConns()
-	dialer := newDialer2(&srv.Config, srv.discmix)
+	srv.dialer = newDialer2(srv, dynPeers, srv.discmix)
+
 	srv.loopWG.Add(1)
-	go srv.run(dialer)
+	go srv.run()
 	return nil
 }
 
@@ -637,11 +629,12 @@ func (srv *Server) setupListening() error {
 	return nil
 }
 
-func (srv *Server) run(dialstate *dialer2) {
+func (srv *Server) run() {
 	srv.log.Info("Started P2P networking", "self", srv.localnode.Node().URLv4())
 	defer srv.loopWG.Done()
 	defer srv.nodedb.Close()
 	defer srv.discmix.Close()
+	defer srv.dialer.stop()
 
 	var (
 		peers        = make(map[enode.ID]*Peer)
@@ -661,23 +654,6 @@ running:
 		case <-srv.quit:
 			// The server was stopped. Run the cleanup logic.
 			break running
-
-		case n := <-srv.addstatic:
-			// This channel is used by AddPeer to add to the
-			// ephemeral static peer list. Add it to the dialer,
-			// it will keep the node connected.
-			srv.log.Trace("Adding static node", "node", n)
-			// dialstate.addStatic(n)
-
-		case n := <-srv.removestatic:
-			// This channel is used by RemovePeer to send a
-			// disconnect request to a peer and begin the
-			// stop keeping the node connected.
-			srv.log.Trace("Removing static node", "node", n)
-			// dialstate.removeStatic(n)
-			// if p, ok := peers[n.ID()]; ok {
-			// 	p.Disconnect(DiscRequested)
-			// }
 
 		case n := <-srv.addtrusted:
 			// This channel is used by AddTrustedPeer to add an enode

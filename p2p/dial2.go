@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
+// checkDial errors:
 var (
 	errSelf             = errors.New("is self")
 	errAlreadyDialing   = errors.New("already dialing")
@@ -37,17 +38,29 @@ var (
 	errNotWhitelisted   = errors.New("not contained in netrestrict whitelist")
 )
 
+// dialer creates outbound connections and submits them into Server.
+// Two types of peer connections can be created:
+//
+//  - static dials are pre-configured connections. The dialer attempts
+//    keep these nodes connected at all times.
+//
+//  - dynamic dials are created from node discovery results. The dialer
+//    continuously reads candidate nodes from its input iterator and attempts
+//    to create peer connections to nodes arriving through the iterator.
+//
 type dialer2 struct {
 	cfg    *Config
 	log    log.Logger
 	server *Server
+	clock  mclock.Clock
 
-	cancel    context.CancelFunc
-	ctx       context.Context
-	nodesIn   chan *enode.Node
-	doneCh    chan *dialTask2
-	peersetCh chan map[enode.ID]struct{}
-	clock     mclock.Clock
+	cancel      context.CancelFunc
+	ctx         context.Context
+	nodesIn     chan *enode.Node
+	doneCh      chan *dialTask2
+	peersetCh   chan map[enode.ID]struct{}
+	addStaticCh chan *enode.Node
+	remStaticCh chan *enode.Node
 
 	dialing map[enode.ID]*dialTask2
 	static  map[enode.ID]*dialTask2
@@ -57,15 +70,19 @@ type dialer2 struct {
 	wg sync.WaitGroup
 }
 
-func newDialer2(cfg *Config, it enode.Iterator) *dialer2 {
+func newDialer2(srv *Server, limit int, it enode.Iterator) *dialer2 {
 	d := &dialer2{
-		cfg:     cfg,
-		log:     cfg.Logger,
-		dialing: make(map[enode.ID]*dialTask2),
-		static:  make(map[enode.ID]*dialTask2),
-		peers:   make(map[enode.ID]struct{}),
-		nodesIn: make(chan *enode.Node),
-		doneCh:  make(chan *dialTask2),
+		server:      srv,
+		cfg:         &srv.Config,
+		log:         srv.Config.Logger,
+		clock:       mclock.System{},
+		dialing:     make(map[enode.ID]*dialTask2),
+		static:      make(map[enode.ID]*dialTask2),
+		peers:       make(map[enode.ID]struct{}),
+		doneCh:      make(chan *dialTask2),
+		nodesIn:     make(chan *enode.Node),
+		addStaticCh: make(chan *enode.Node),
+		remStaticCh: make(chan *enode.Node),
 	}
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	if d.log == nil {
@@ -78,17 +95,39 @@ func newDialer2(cfg *Config, it enode.Iterator) *dialer2 {
 	return d
 }
 
+// stop shuts down the dialer and waits for all current dial tasks to complete.
 func (d *dialer2) stop() {
 	d.cancel()
 	d.wg.Wait()
 }
 
+// addStatic adds a static dial.
+func (d *dialer2) addStatic(n *enode.Node) {
+	select {
+	case d.addStaticCh <- n:
+		d.log.Trace("Adding static node", "node", n)
+	case <-d.ctx.Done():
+	}
+}
+
+// removeStatic removes a static dial.
+func (d *dialer2) removeStatic(n *enode.Node) {
+	select {
+	case d.remStaticCh <- n:
+		d.log.Trace("Removing static node", "node", n)
+	case <-d.ctx.Done():
+	}
+}
+
+// loop is the main loop of the dialer.
 func (d *dialer2) loop(it enode.Iterator) {
 	var (
 		nodesCh      chan *enode.Node
 		historyTimer mclock.Timer
 		historyExp   = make(chan struct{}, 1)
 	)
+
+loop:
 	for {
 		d.startStaticDials()
 		if d.atCapacity() {
@@ -110,6 +149,15 @@ func (d *dialer2) loop(it enode.Iterator) {
 		case peers := <-d.peersetCh:
 			d.peers = peers
 
+		case node := <-d.addStaticCh:
+			id := node.ID()
+			if d.static[id] == nil {
+				d.static[id] = &dialTask2{dest: node, flags: staticDialedConn}
+			}
+
+		case node := <-d.remStaticCh:
+			delete(d.static, node.ID())
+
 		case <-historyExp:
 			historyTimer.Stop()
 			now := d.clock.Now()
@@ -119,7 +167,7 @@ func (d *dialer2) loop(it enode.Iterator) {
 
 		case <-d.ctx.Done():
 			it.Close()
-			break
+			break loop
 		}
 	}
 
@@ -132,6 +180,8 @@ func (d *dialer2) loop(it enode.Iterator) {
 	d.wg.Done()
 }
 
+// readNodes runs in its own goroutine and delivers nodes from
+// the input iterator to the nodesIn channel.
 func (d *dialer2) readNodes(it enode.Iterator) {
 	defer d.wg.Done()
 
@@ -143,11 +193,13 @@ func (d *dialer2) readNodes(it enode.Iterator) {
 	}
 }
 
+// atCapacity reports whether all dialing slots are occupied.
 func (d *dialer2) atCapacity() bool {
 	return len(d.dialing) == maxActiveDialTasks ||
 		len(d.peers) == d.cfg.MaxPeers
 }
 
+// checkDial returns an error if node n should not be dialed.
 func (d *dialer2) checkDial(n *enode.Node) error {
 	if _, ok := d.dialing[n.ID()]; ok {
 		return errAlreadyDialing
@@ -166,6 +218,7 @@ func (d *dialer2) checkDial(n *enode.Node) error {
 	return nil
 }
 
+// startDial runs the given dial task in a separate goroutine.
 func (d *dialer2) startDial(task *dialTask2) {
 	hkey := string(task.dest.ID().Bytes())
 	d.history.add(hkey, d.clock.Now().Add(dialHistoryExpiration))
@@ -176,6 +229,7 @@ func (d *dialer2) startDial(task *dialTask2) {
 	}()
 }
 
+// startStaticDials starts all configured static dial tasks.
 func (d *dialer2) startStaticDials() {
 	for id, task := range d.static {
 		if _, ok := d.peers[id]; ok {
