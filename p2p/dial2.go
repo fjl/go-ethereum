@@ -75,7 +75,6 @@ func newDialer2(srv *Server, limit int, it enode.Iterator) *dialer2 {
 		server:      srv,
 		cfg:         &srv.Config,
 		log:         srv.Config.Logger,
-		clock:       mclock.System{},
 		dialing:     make(map[enode.ID]*dialTask2),
 		static:      make(map[enode.ID]*dialTask2),
 		peers:       make(map[enode.ID]struct{}),
@@ -87,6 +86,10 @@ func newDialer2(srv *Server, limit int, it enode.Iterator) *dialer2 {
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	if d.log == nil {
 		d.log = log.Root()
+	}
+	d.clock = d.cfg.clock
+	if d.clock == nil {
+		d.clock = mclock.System{}
 	}
 
 	d.wg.Add(2)
@@ -101,7 +104,7 @@ func (d *dialer2) stop() {
 	d.wg.Wait()
 }
 
-// addStatic adds a static dial.
+// addStatic adds a static dial candidate.
 func (d *dialer2) addStatic(n *enode.Node) {
 	select {
 	case d.addStaticCh <- n:
@@ -110,7 +113,7 @@ func (d *dialer2) addStatic(n *enode.Node) {
 	}
 }
 
-// removeStatic removes a static dial.
+// removeStatic removes a static dial candidate.
 func (d *dialer2) removeStatic(n *enode.Node) {
 	select {
 	case d.remStaticCh <- n:
@@ -126,7 +129,6 @@ func (d *dialer2) loop(it enode.Iterator) {
 		historyTimer mclock.Timer
 		historyExp   = make(chan struct{}, 1)
 	)
-
 loop:
 	for {
 		d.startStaticDials()
