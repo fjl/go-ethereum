@@ -450,7 +450,7 @@ func (srv *Server) Start() (err error) {
 		srv.listenFunc = net.Listen
 	}
 	if srv.Dialer == nil {
-		srv.Dialer = TCPDialer{&net.Dialer{Timeout: defaultDialTimeout}}
+		srv.Dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
 	}
 	srv.quit = make(chan struct{})
 	srv.delpeer = make(chan peerDrop)

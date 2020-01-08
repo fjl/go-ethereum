@@ -58,13 +58,13 @@ type dialer2 struct {
 	ctx         context.Context
 	nodesIn     chan *enode.Node
 	doneCh      chan *dialTask2
-	peersetCh   chan map[enode.ID]struct{}
+	peersetCh   chan map[enode.ID]*Peer
 	addStaticCh chan *enode.Node
 	remStaticCh chan *enode.Node
 
 	dialing map[enode.ID]*dialTask2
 	static  map[enode.ID]*dialTask2
-	peers   map[enode.ID]struct{}
+	peers   map[enode.ID]*Peer
 	history expHeap
 
 	wg sync.WaitGroup
@@ -77,9 +77,10 @@ func newDialer2(srv *Server, limit int, it enode.Iterator) *dialer2 {
 		log:         srv.Config.Logger,
 		dialing:     make(map[enode.ID]*dialTask2),
 		static:      make(map[enode.ID]*dialTask2),
-		peers:       make(map[enode.ID]struct{}),
+		peers:       make(map[enode.ID]*Peer),
 		doneCh:      make(chan *dialTask2),
 		nodesIn:     make(chan *enode.Node),
+		peersetCh:   make(chan map[enode.ID]*Peer),
 		addStaticCh: make(chan *enode.Node),
 		remStaticCh: make(chan *enode.Node),
 	}
@@ -122,6 +123,14 @@ func (d *dialer2) removeStatic(n *enode.Node) {
 	}
 }
 
+// setPeers updates the peer set.
+func (d *dialer2) setPeers(pm map[enode.ID]*Peer) {
+	select {
+	case d.peersetCh <- pm:
+	case <-d.ctx.Done():
+	}
+}
+
 // loop is the main loop of the dialer.
 func (d *dialer2) loop(it enode.Iterator) {
 	var (
@@ -140,7 +149,9 @@ loop:
 
 		select {
 		case node := <-nodesCh:
-			if err := d.checkDial(node); err == nil {
+			if err := d.checkDial(node); err != nil {
+				d.log.Trace("Discarding p2p dial candidate", "id", node.ID(), "ip", node.IP(), "err", err)
+			} else {
 				task := &dialTask2{flags: dynDialedConn, dest: node}
 				d.startDial(task)
 			}
@@ -150,6 +161,7 @@ loop:
 
 		case peers := <-d.peersetCh:
 			d.peers = peers
+			// TODO: cancel dials to connected peers
 
 		case node := <-d.addStaticCh:
 			id := node.ID()
@@ -209,10 +221,8 @@ func (d *dialer2) checkDial(n *enode.Node) error {
 	if _, ok := d.peers[n.ID()]; ok {
 		return errAlreadyConnected
 	}
-	if d.cfg.NetRestrict == nil {
-		if !d.cfg.NetRestrict.Contains(n.IP()) {
-			return errNotWhitelisted
-		}
+	if d.cfg.NetRestrict != nil && !d.cfg.NetRestrict.Contains(n.IP()) {
+		return errNotWhitelisted
 	}
 	if d.history.contains(string(n.ID().Bytes())) {
 		return errRecentlyDialed
@@ -222,6 +232,7 @@ func (d *dialer2) checkDial(n *enode.Node) error {
 
 // startDial runs the given dial task in a separate goroutine.
 func (d *dialer2) startDial(task *dialTask2) {
+	d.log.Trace("Starting p2p dial", "id", task.dest.ID(), "ip", task.dest.IP(), "flag", task.flags)
 	hkey := string(task.dest.ID().Bytes())
 	d.history.add(hkey, d.clock.Now().Add(dialHistoryExpiration))
 	d.dialing[task.dest.ID()] = task
@@ -310,7 +321,7 @@ func (t *dialTask2) resolve(d *dialer2) bool {
 
 // dial performs the actual connection attempt.
 func (t *dialTask2) dial(d *dialer2, dest *enode.Node) error {
-	fd, err := d.server.Dialer.Dial(dest)
+	fd, err := d.server.Dialer.Dial(d.ctx, dest)
 	if err != nil {
 		return &dialError{err}
 	}

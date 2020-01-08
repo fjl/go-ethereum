@@ -17,6 +17,7 @@
 package p2p
 
 import (
+	"context"
 	"net"
 	"time"
 
@@ -40,23 +41,23 @@ const (
 // NodeDialer is used to connect to nodes in the network, typically by using
 // an underlying net.Dialer but also using net.Pipe in tests
 type NodeDialer interface {
-	Dial(*enode.Node) (net.Conn, error)
+	Dial(context.Context, *enode.Node) (net.Conn, error)
 }
 
 type nodeResolver interface {
 	Resolve(*enode.Node) *enode.Node
 }
 
-// TCPDialer implements the NodeDialer interface by using a net.Dialer to
+// tcpDialer implements the NodeDialer interface by using a net.Dialer to
 // create TCP connections to nodes in the network
-type TCPDialer struct {
-	*net.Dialer
+type tcpDialer struct {
+	d *net.Dialer
 }
 
 // Dial creates a TCP connection to the node
-func (t TCPDialer) Dial(dest *enode.Node) (net.Conn, error) {
+func (t tcpDialer) Dial(ctx context.Context, dest *enode.Node) (net.Conn, error) {
 	addr := &net.TCPAddr{IP: dest.IP(), Port: dest.TCP()}
-	return t.Dialer.Dial("tcp", addr.String())
+	return t.d.DialContext(ctx, "tcp", addr.String())
 }
 
 // dialstate schedules dials and discovery lookups.
