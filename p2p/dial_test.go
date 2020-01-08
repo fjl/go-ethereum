@@ -14,46 +14,29 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-// +build none
-
 package p2p
 
 import (
 	"encoding/binary"
 	"net"
-	"reflect"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
-func init() {
-	spew.Config.Indent = "\t"
-}
-
-type dialtest struct {
-	init   *dialstate // state before and after the test.
-	rounds []round
-}
-
 type round struct {
-	peers []*Peer // current peer set
-	done  []task  // tasks that got done this round
-	new   []task  // the result must match this one
+	peers        []*Peer       // current peer set
+	discovered   []*enode.Node // discovered nodes
+	completed    []*enode.Node // dials which completed in this round
+	wantNewDials []*enode.Node
 }
 
-func runDialTest(t *testing.T, test dialtest) {
-	var (
-		vtime   time.Time
-		running int
-	)
+func runDialTest(t *testing.T, rounds []round) {
 	pm := func(ps []*Peer) map[enode.ID]*Peer {
 		m := make(map[enode.ID]*Peer)
 		for _, p := range ps {
@@ -61,165 +44,180 @@ func runDialTest(t *testing.T, test dialtest) {
 		}
 		return m
 	}
-	for i, round := range test.rounds {
-		for _, task := range round.done {
-			running--
-			if running < 0 {
-				panic("running task counter underflow")
-			}
-			test.init.taskDone(task, vtime)
+
+	var (
+		clock     = new(mclock.Simulated)
+		iterator  = new(dialTestIterator)
+		dialer    = new(dialTestDialer)
+		logger    = testlog.Logger(t, log.LvlTrace)
+		limit     = 20
+		config    = Config{clock: clock, Logger: logger, Dialer: dialer}
+		server    = &Server{Config: config}
+		dialstate = newDialer2(server, limit, iterator)
+	)
+	defer dialstate.stop()
+
+	for i, round := range rounds {
+		dialstate.setPeers(pm(round.peers))
+		iterator.addNodes(round.discovered)
+
+		if err := dialer.completeDials(round.completed); err != nil {
+			t.Fatalf("round %d: %v", err)
+		}
+		if err := dialer.waitForDials(round.wantNewDials); err != nil {
+			t.Fatalf("round %d: %v", err)
 		}
 
-		new := test.init.newTasks(running, pm(round.peers), vtime)
-		if !sametasks(new, round.new) {
-			t.Errorf("ERROR round %d: got %v\nwant %v\nstate: %v\nrunning: %v",
-				i, spew.Sdump(new), spew.Sdump(round.new), spew.Sdump(test.init), spew.Sdump(running))
-		}
-		t.Logf("round %d (running %d) new tasks: %s", i, running, strings.TrimSpace(spew.Sdump(new)))
-
-		// Time advances by 16 seconds on every round.
-		vtime = vtime.Add(16 * time.Second)
-		running += len(new)
+		clock.Run(16 * time.Second)
 	}
+}
+
+type dialTestDialer struct {
+	active map[enode.ID]struct{}
+
+	mu      sync.Mutex
+	created []*enode.Node
+}
+
+func (d *dialTestDialer) Dial(n *enode.Node) (net.Conn, error) {
+
 }
 
 // This test checks that dynamic dials are launched from discovery results.
 func TestDialStateDynDial(t *testing.T) {
-	config := &Config{Logger: testlog.Logger(t, log.LvlTrace)}
-	runDialTest(t, dialtest{
-		init: newDialState(enode.ID{}, 5, config),
-		rounds: []round{
-			// A discovery query is launched.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-				},
-				new: []task{
-					&discoverTask{want: 3},
-				},
+	runDialTest(t, []round{
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 			},
-			// Dynamic dials are launched when it completes.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-				},
-				done: []task{
-					&discoverTask{results: []*enode.Node{
-						newNode(uintID(2), nil), // this one is already connected and not dialed.
-						newNode(uintID(3), nil),
-w						newNode(uintID(4), nil),
-						newNode(uintID(5), nil),
-						newNode(uintID(6), nil), // these are not tried because max dyn dials is 5
-						newNode(uintID(7), nil), // ...
-					}},
-				},
-				new: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
-				},
+			discovered: []*enode.Node{
+				newNode(uintID(0), nil),
 			},
-			// Some of the dials complete but no new ones are launched yet because
-			// the sum of active dial count and dynamic peer count is == maxDynDials.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
-				},
-				done: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
-				},
+		},
+
+		// Dynamic dials are launched when it completes.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 			},
-			// No new dial tasks are launched in the this round because
-			// maxDynDials has been reached.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
-				},
-				done: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
-				},
-				new: []task{
-					&waitExpireTask{Duration: 19 * time.Second},
-				},
+			done: []task{
+				&discoverTask{results: []*enode.Node{
+					newNode(uintID(2), nil), // this one is already connected and not dialed.
+					newNode(uintID(3), nil),
+					newNode(uintID(4), nil),
+					newNode(uintID(5), nil),
+					newNode(uintID(6), nil), // these are not tried because max dyn dials is 5
+					newNode(uintID(7), nil), // ...
+				}},
 			},
-			// In this round, the peer with id 2 drops off. The query
-			// results from last discovery lookup are reused.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
-				},
-				new: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
-				},
+			new: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 			},
-			// More peers (3,4) drop off and dial for ID 6 completes.
-			// The last query result from the discovery lookup is reused
-			// and a new one is spawned because more candidates are needed.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
-				},
-				done: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
-				},
-				new: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
-					&discoverTask{want: 2},
-				},
+		},
+		// Some of the dials complete but no new ones are launched yet because
+		// the sum of active dial count and dynamic peer count is == maxDynDials.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
 			},
-			// Peer 7 is connected, but there still aren't enough dynamic peers
-			// (4 out of 5). However, a discovery is already running, so ensure
-			// no new is started.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
-				},
-				done: []task{
-					&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
-				},
+			done: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
 			},
-			// Finish the running node discovery with an empty set. A new lookup
-			// should be immediately requested.
-			{
-				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
-					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
-				},
-				done: []task{
-					&discoverTask{},
-				},
-				new: []task{
-					&discoverTask{want: 2},
-				},
+		},
+		// No new dial tasks are launched in the this round because
+		// maxDynDials has been reached.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+			},
+			done: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
+			},
+			new: []task{
+				&waitExpireTask{Duration: 19 * time.Second},
+			},
+		},
+		// In this round, the peer with id 2 drops off. The query
+		// results from last discovery lookup are reused.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+			},
+			new: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
+			},
+		},
+		// More peers (3,4) drop off and dial for ID 6 completes.
+		// The last query result from the discovery lookup is reused
+		// and a new one is spawned because more candidates are needed.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+			},
+			done: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
+			},
+			new: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
+				&discoverTask{want: 2},
+			},
+		},
+		// Peer 7 is connected, but there still aren't enough dynamic peers
+		// (4 out of 5). However, a discovery is already running, so ensure
+		// no new is started.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
+			},
+			done: []task{
+				&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
+			},
+		},
+		// Finish the running node discovery with an empty set. A new lookup
+		// should be immediately requested.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
+			},
+			done: []task{
+				&discoverTask{},
+			},
+			new: []task{
+				&discoverTask{want: 2},
 			},
 		},
 	})
 }
+
+/*
 
 // Tests that bootnodes are dialed if no peers are connectd, but not otherwise.
 func TestDialStateDynDialBootnode(t *testing.T) {
@@ -565,6 +563,8 @@ next:
 	}
 	return true
 }
+
+*/
 
 func uintID(i uint32) enode.ID {
 	var id enode.ID
