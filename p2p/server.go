@@ -51,7 +51,6 @@ const (
 	discmixTimeout = 5 * time.Second
 
 	// Connectivity defaults.
-	maxActiveDialTasks     = 16
 	defaultMaxPendingPeers = 50
 	defaultDialRatio       = 3
 
@@ -186,8 +185,6 @@ type Server struct {
 	DiscV5    *discv5.Network
 	discmix   *enode.FairMix
 	dialer    *dialer2
-
-	staticNodeResolver nodeResolver
 
 	// Channels into the run loop.
 	quit                    chan struct{}
@@ -449,9 +446,6 @@ func (srv *Server) Start() (err error) {
 	if srv.listenFunc == nil {
 		srv.listenFunc = net.Listen
 	}
-	if srv.Dialer == nil {
-		srv.Dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
-	}
 	srv.quit = make(chan struct{})
 	srv.delpeer = make(chan peerDrop)
 	srv.checkpointPostHandshake = make(chan *conn)
@@ -472,9 +466,7 @@ func (srv *Server) Start() (err error) {
 	if err := srv.setupDiscovery(); err != nil {
 		return err
 	}
-
-	dynPeers := srv.maxDialedConns()
-	srv.dialer = newDialer2(srv, dynPeers, srv.discmix)
+	srv.setupDialer()
 
 	srv.loopWG.Add(1)
 	go srv.run()
@@ -580,7 +572,6 @@ func (srv *Server) setupDiscovery() error {
 		}
 		srv.ntab = ntab
 		srv.discmix.AddSource(ntab.RandomNodes())
-		srv.staticNodeResolver = ntab
 	}
 
 	// Discovery V5
@@ -601,6 +592,25 @@ func (srv *Server) setupDiscovery() error {
 		srv.DiscV5 = ntab
 	}
 	return nil
+}
+
+func (srv *Server) setupDialer() {
+	config := dialerConfig{
+		maxDynPeers:    srv.maxDialedConns(),
+		maxActiveDials: srv.MaxPendingPeers,
+		resolver:       srv.ntab,
+		log:            srv.Logger,
+		netRestrict:    srv.NetRestrict,
+		dialer:         srv.Dialer,
+		clock:          srv.clock,
+	}
+	if config.maxActiveDials == 0 {
+		config.maxActiveDials = defaultMaxPendingPeers
+	}
+	if config.dialer == nil {
+		config.dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
+	}
+	srv.dialer = newDialer2(config, srv.discmix, srv.SetupConn)
 }
 
 func (srv *Server) setupListening() error {
