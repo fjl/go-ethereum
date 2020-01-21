@@ -18,7 +18,7 @@ package p2p
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -34,66 +34,68 @@ import (
 
 // This test checks that dynamic dials are launched from discovery results.
 func TestDialStateDynDial(t *testing.T) {
+	t.Parallel()
+
 	config := dialerConfig{maxActiveDials: 3, maxDynPeers: 4}
 	runDialTest(t, config, []dialTestRound{
 		// 9 nodes are discovered in the first round.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "")}},
 			},
 			discovered: []*enode.Node{
-				newNode(uintID(0), net.IP{127, 0, 0, 1}), // not dialed because already connected as static peer
-				newNode(uintID(2), net.IP{127, 0, 0, 1}), // not dialed because already connected as dynamic peer
-				newNode(uintID(3), net.IP{127, 0, 0, 1}),
-				newNode(uintID(4), net.IP{127, 0, 0, 1}),
-				newNode(uintID(5), net.IP{127, 0, 0, 1}),
-				newNode(uintID(6), net.IP{127, 0, 0, 1}), // not tried because max dyn dials is 3
-				newNode(uintID(7), net.IP{127, 0, 0, 1}), // ...
-				newNode(uintID(8), net.IP{127, 0, 0, 1}), // ...
+				newNode(uintID(0), "127.0.0.1"), // not dialed because already connected as static peer
+				newNode(uintID(2), "127.0.0.1"), // not dialed because already connected as dynamic peer
+				newNode(uintID(3), "127.0.0.1"),
+				newNode(uintID(4), "127.0.0.1"),
+				newNode(uintID(5), "127.0.0.1"),
+				newNode(uintID(6), "127.0.0.1"), // not tried because max dyn dials is 3
+				newNode(uintID(7), "127.0.0.1"), // ...
+				newNode(uintID(8), "127.0.0.1"), // ...
 			},
 			wantNewDials: []*enode.Node{
-				newNode(uintID(3), net.IP{127, 0, 0, 1}),
-				newNode(uintID(4), net.IP{127, 0, 0, 1}),
-				newNode(uintID(5), net.IP{127, 0, 0, 1}),
+				newNode(uintID(3), "127.0.0.1"),
+				newNode(uintID(4), "127.0.0.1"),
+				newNode(uintID(5), "127.0.0.1"),
 			},
 		},
 
 		// Dials from previous round complete and new ones are launched up to the limit.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "")}},
 			},
-			completed: []*enode.Node{
-				newNode(uintID(3), net.IP{127, 0, 0, 1}),
-				newNode(uintID(4), net.IP{127, 0, 0, 1}),
-				newNode(uintID(5), net.IP{127, 0, 0, 1}),
+			completed: map[enode.ID]error{
+				uintID(3): nil,
+				uintID(4): nil,
+				uintID(5): nil,
 			},
 			wantNewDials: []*enode.Node{
-				newNode(uintID(6), net.IP{127, 0, 0, 1}),
-				newNode(uintID(7), net.IP{127, 0, 0, 1}),
-				newNode(uintID(8), net.IP{127, 0, 0, 1}),
+				newNode(uintID(6), "127.0.0.1"),
+				newNode(uintID(7), "127.0.0.1"),
+				newNode(uintID(8), "127.0.0.1"),
 			},
 		},
 
 		// More dials complete, filling the last remaining peer slot.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), "")}},
 			},
-			completed: []*enode.Node{
-				newNode(uintID(6), net.IP{127, 0, 0, 1}),
-				newNode(uintID(7), net.IP{127, 0, 0, 1}),
-				newNode(uintID(8), net.IP{127, 0, 0, 1}),
+			completed: map[enode.ID]error{
+				uintID(6): nil,
+				uintID(7): nil,
+				uintID(8): nil,
 			},
 			discovered: []*enode.Node{
-				newNode(uintID(9), net.IP{127, 0, 0, 1}),
+				newNode(uintID(9), "127.0.0.1"),
 			},
 		},
 
@@ -101,10 +103,10 @@ func TestDialStateDynDial(t *testing.T) {
 		// maxDynDials has been reached.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), "")}},
 			},
 		},
 
@@ -112,24 +114,24 @@ func TestDialStateDynDial(t *testing.T) {
 		// results from last discovery lookup are reused.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), "")}},
 			},
 			wantNewDials: []*enode.Node{
-				newNode(uintID(9), nil),
+				newNode(uintID(9), ""),
 			},
 		},
 
 		// This round just completes the dial.
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(6), "")}},
 			},
-			completed: []*enode.Node{
-				newNode(uintID(9), nil),
+			completed: map[enode.ID]error{
+				uintID(9): nil,
 			},
 		},
 	})
@@ -137,17 +139,18 @@ func TestDialStateDynDial(t *testing.T) {
 
 // This test checks that candidates that do not match the netrestrict list are not dialed.
 func TestDialStateNetRestrict(t *testing.T) {
-	nodes := []*enode.Node{
-		newNode(uintID(1), net.ParseIP("127.0.0.1")),
-		newNode(uintID(2), net.ParseIP("127.0.0.2")),
-		newNode(uintID(3), net.ParseIP("127.0.0.3")),
-		newNode(uintID(4), net.ParseIP("127.0.0.4")),
-		newNode(uintID(5), net.ParseIP("127.0.2.5")),
-		newNode(uintID(6), net.ParseIP("127.0.2.6")),
-		newNode(uintID(7), net.ParseIP("127.0.2.7")),
-		newNode(uintID(8), net.ParseIP("127.0.2.8")),
-	}
+	t.Parallel()
 
+	nodes := []*enode.Node{
+		newNode(uintID(1), "127.0.0.1:30303"),
+		newNode(uintID(2), "127.0.0.2:30303"),
+		newNode(uintID(3), "127.0.0.3:30303"),
+		newNode(uintID(4), "127.0.0.4:30303"),
+		newNode(uintID(5), "127.0.2.5:30303"),
+		newNode(uintID(6), "127.0.2.6:30303"),
+		newNode(uintID(7), "127.0.2.7:30303"),
+		newNode(uintID(8), "127.0.2.8:30303"),
+	}
 	config := dialerConfig{
 		netRestrict:    new(netutil.Netlist),
 		maxActiveDials: 10,
@@ -160,216 +163,189 @@ func TestDialStateNetRestrict(t *testing.T) {
 			wantNewDials: nodes[4:8],
 		},
 		{
-			completed: nodes[4:8],
+			completed: map[enode.ID]error{
+				nodes[4].ID(): nil,
+				nodes[5].ID(): nil,
+				nodes[6].ID(): nil,
+				nodes[7].ID(): nil,
+			},
 		},
 	})
 }
 
-// // This test checks that static dials are launched.
-// func TestDialStateStaticDial(t *testing.T) {
-// 	config := dialerConfig{
-// 		StaticNodes: []*enode.Node{
-// 			newNode(uintID(1), nil),
-// 			newNode(uintID(2), nil),
-// 			newNode(uintID(3), nil),
-// 			newNode(uintID(4), nil),
-// 			newNode(uintID(5), nil),
-// 		},
-// 		Logger: testlog.Logger(t, log.LvlTrace),
-// 	}
-//
-// 	runDialTest(t, dialtest{
-// 		rounds: []round{
-// 			// Static dials are launched for the nodes that
-// 			// aren't yet connected.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 				new: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(4), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(5), nil)},
-// 				},
-// 			},
-// 			// No new tasks are launched in this round because all static
-// 			// nodes are either connected or still being dialed.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
-// 				},
-// 				done: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
-// 				},
-// 			},
-// 			// No new dial tasks are launched because all static
-// 			// nodes are now connected.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(4), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
-// 				},
-// 				done: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(4), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(5), nil)},
-// 				},
-// 				new: []task{
-// 					&waitExpireTask{Duration: 19 * time.Second},
-// 				},
-// 			},
-// 			// Wait a round for dial history to expire, no new tasks should spawn.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(4), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
-// 				},
-// 			},
-// 			// If a static node is dropped, it should be immediately redialed,
-// 			// irrespective whether it was originally static or dynamic.
-// 			{
-// 				done: []task{
-// 					&waitExpireTask{Duration: 19 * time.Second},
-// 				},
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
-// 				},
-// 				new: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
-// 				},
-// 			},
-// 		},
-// 	})
-// }
+// This test checks that static dials are launched.
+func TestDialStateStaticDial(t *testing.T) {
+	t.Parallel()
 
-// // This test checks that past dials are not retried for some time.
-// func TestDialStateCache(t *testing.T) {
-// 	config := &Config{
-// 		StaticNodes: []*enode.Node{
-// 			newNode(uintID(1), nil),
-// 			newNode(uintID(2), nil),
-// 			newNode(uintID(3), nil),
-// 		},
-// 		Logger: testlog.Logger(t, log.LvlTrace),
-// 	}
-// 	runDialTest(t, dialtest{
-// 		init: newDialState(enode.ID{}, 0, config),
-// 		rounds: []round{
-// 			// Static dials are launched for the nodes that
-// 			// aren't yet connected.
-// 			{
-// 				peers: nil,
-// 				new: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
-// 				},
-// 			},
-// 			// No new tasks are launched in this round because all static
-// 			// nodes are either connected or still being dialed.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 				done: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
-// 				},
-// 			},
-// 			// A salvage task is launched to wait for node 3's history
-// 			// entry to expire.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 				done: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
-// 				},
-// 				new: []task{
-// 					&waitExpireTask{Duration: 19 * time.Second},
-// 				},
-// 			},
-// 			// Still waiting for node 3's entry to expire in the cache.
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 			},
-// 			{
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 			},
-// 			// The cache entry for node 3 has expired and is retried.
-// 			{
-// 				done: []task{
-// 					&waitExpireTask{Duration: 19 * time.Second},
-// 				},
-// 				peers: []*Peer{
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
-// 					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
-// 				},
-// 				new: []task{
-// 					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
-// 				},
-// 			},
-// 		},
-// 	})
-// }
+	config := dialerConfig{
+		maxActiveDials: 2,
+		maxDynPeers:    3,
+	}
+	runDialTest(t, config, []dialTestRound{
+		// Static dials are launched for the nodes that
+		// aren't yet connected.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+			update: func(d *dialer2) {
+				d.addStatic(newNode(uintID(1), "127.0.0.1:30303"))
+				d.addStatic(newNode(uintID(2), "127.0.0.2:30303"))
+				d.addStatic(newNode(uintID(3), "127.0.0.3:30303"))
+				d.addStatic(newNode(uintID(4), "127.0.0.4:30303"))
+				d.addStatic(newNode(uintID(5), "127.0.0.5:30303"))
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(3), "127.0.0.3:30303"),
+				newNode(uintID(4), "127.0.0.4:30303"),
+			},
+		},
+		// Dial to 3 completes, filling the last peer slot. No new tasks.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), "127.0.0.1:30303")}},
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "127.0.0.2:30303")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), "127.0.0.3:30303")}},
+			},
+			completed: map[enode.ID]error{
+				uintID(3): nil,
+				uintID(4): nil,
+			},
+		},
+		// Peer 1 drops. New dials are launched to fill the slot.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), "127.0.0.2:30303")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), "127.0.0.3:30303")}},
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(1), "127.0.0.1:30303"),
+				newNode(uintID(5), "127.0.0.5:30303"),
+			},
+		},
+	})
+}
 
-// func TestDialResolve(t *testing.T) {
-// 	config := &Config{
-// 		Logger: testlog.Logger(t, log.LvlTrace),
-// 		Dialer: TCPDialer{&net.Dialer{Deadline: time.Now().Add(-5 * time.Minute)}},
-// 	}
-// 	resolved := newNode(uintID(1), net.IP{127, 0, 55, 234})
-// 	resolver := &resolveMock{answer: resolved}
-// 	state := newDialState(enode.ID{}, 0, config)
-//
-// 	// Check that the task is generated with an incomplete ID.
-// 	dest := newNode(uintID(1), nil)
-// 	state.addStatic(dest)
-// 	tasks := state.newTasks(0, nil, time.Time{})
-// 	if !reflect.DeepEqual(tasks, []task{&dialTask{flags: staticDialedConn, dest: dest}}) {
-// 		t.Fatalf("expected dial task, got %#v", tasks)
-// 	}
-//
-// 	// Now run the task, it should resolve the ID once.
-// 	srv := &Server{
-// 		Config:             *config,
-// 		log:                config.Logger,
-// 		staticNodeResolver: resolver,
-// 	}
-// 	tasks[0].Do(srv)
-// 	if !reflect.DeepEqual(resolver.calls, []*enode.Node{dest}) {
-// 		t.Fatalf("wrong resolve calls, got %v", resolver.calls)
-// 	}
-//
-// 	// Report it as done to the dialer, which should update the static node record.
-// 	state.taskDone(tasks[0], time.Now())
-// 	if state.static[uintID(1)].dest != resolved {
-// 		t.Fatalf("state.dest not updated")
-// 	}
-// }
+// This test checks that past dials are not retried for some time.
+func TestDialStateHistory(t *testing.T) {
+	t.Parallel()
+
+	config := dialerConfig{
+		maxActiveDials: 3,
+		maxDynPeers:    3,
+	}
+	runDialTest(t, config, []dialTestRound{
+		// Static dials are launched for the nodes that aren't yet connected.
+		{
+			update: func(d *dialer2) {
+				d.addStatic(newNode(uintID(1), "127.0.0.1"))
+				d.addStatic(newNode(uintID(2), "127.0.0.2"))
+				d.addStatic(newNode(uintID(3), "127.0.0.3"))
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(1), "127.0.0.1"),
+				newNode(uintID(2), "127.0.0.2"),
+				newNode(uintID(3), "127.0.0.3"),
+			},
+		},
+		// No new tasks are launched in this round because all static
+		// nodes are either connected or still being dialed.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+			completed: map[enode.ID]error{
+				uintID(1): nil,
+				uintID(2): nil,
+				uintID(3): errors.New("oops"),
+			},
+		},
+		// Nothing happens in this round because we're waiting for
+		// node 3's history entry to expire.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+		},
+		// Still waiting...
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+		},
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+		},
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+		},
+		// The cache entry for node 3 has expired and is retried.
+		{
+			peers: []*Peer{
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), "127.0.0.1")}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), "127.0.0.2")}},
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(3), "127.0.0.3"),
+			},
+		},
+	})
+}
+
+func TestDialStateResolve(t *testing.T) {
+	t.Parallel()
+
+	config := dialerConfig{
+		maxActiveDials: 1,
+		maxDynPeers:    1,
+	}
+	node := newNode(uintID(1), "")
+	resolved := newNode(uintID(1), "127.0.55.234:30303")
+	runDialTest(t, config, []dialTestRound{
+		{
+			update: func(d *dialer2) {
+				d.addStatic(node)
+			},
+			wantResolves: map[enode.ID]*enode.Node{
+				uintID(1): resolved,
+			},
+			wantNewDials: []*enode.Node{
+				node,
+			},
+		},
+		{
+			completed: map[enode.ID]error{
+				uintID(1): errors.New("oops"),
+			},
+			wantResolves: map[enode.ID]*enode.Node{
+				uintID(1): resolved,
+			},
+			wantNewDials: []*enode.Node{
+				resolved,
+			},
+		},
+	})
+}
+
+// -------
+// Code below here is the framework for the tests above.
 
 type dialTestRound struct {
-	peers        []*Peer       // current peer set
-	discovered   []*enode.Node // newly discovered nodes
-	completed    []*enode.Node // dials that complete in this round
+	peers        []*Peer            // current peer set
+	update       func(*dialer2)     // called at beginning of round
+	discovered   []*enode.Node      // newly discovered nodes
+	completed    map[enode.ID]error // dials that complete in this round
+	wantResolves map[enode.ID]*enode.Node
 	wantNewDials []*enode.Node // dials that should be launched in this round
 }
 
@@ -378,9 +354,12 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 		clock    = new(mclock.Simulated)
 		iterator = newDialTestIterator()
 		dialer   = newDialTestDialer()
+		resolver = new(dialTestResolver)
 	)
+
 	config.clock = clock
 	config.dialer = dialer
+	config.resolver = resolver
 	config.log = testlog.Logger(t, log.LvlTrace)
 	setup := func(net.Conn, connFlag, *enode.Node) error {
 		return nil
@@ -397,7 +376,12 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 	}
 
 	for i, round := range rounds {
+		t.Logf("round %d", i)
+		resolver.setAnswers(round.wantResolves)
 		dialstate.setPeers(pm(round.peers))
+		if round.update != nil {
+			round.update(dialstate)
+		}
 		iterator.addNodes(round.discovered)
 
 		if err := dialer.completeDials(round.completed); err != nil {
@@ -405,6 +389,9 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 		}
 		if err := dialer.waitForDials(round.wantNewDials); err != nil {
 			t.Fatalf("round %d: %v", i, err)
+		}
+		if !resolver.checkCalls() {
+			t.Fatalf("unexpected calls to Resolve: %v", resolver.calls)
 		}
 
 		clock.Run(16 * time.Second)
@@ -516,7 +503,7 @@ func (d *dialTestDialer) waitForDials(nodes []*enode.Node) error {
 	timeout := time.NewTimer(1 * time.Second)
 	defer timeout.Stop()
 
-	for {
+	for len(waitset) > 0 {
 		select {
 		case req := <-d.init:
 			if _, ok := waitset[req.n.ID()]; !ok {
@@ -524,11 +511,7 @@ func (d *dialTestDialer) waitForDials(nodes []*enode.Node) error {
 			}
 			delete(waitset, req.n.ID())
 			d.blocked[req.n.ID()] = req
-
 		case <-timeout.C:
-			if len(waitset) == 0 {
-				return nil
-			}
 			var waitlist []enode.ID
 			for id := range waitset {
 				waitlist = append(waitlist, id)
@@ -536,33 +519,62 @@ func (d *dialTestDialer) waitForDials(nodes []*enode.Node) error {
 			return fmt.Errorf("timed out waiting for dials to %v", waitlist)
 		}
 	}
+
+	return d.checkUnexpectedDial()
+}
+
+func (d *dialTestDialer) checkUnexpectedDial() error {
+	select {
+	case req := <-d.init:
+		return fmt.Errorf("attempt to dial unexpected node %v", req.n.ID())
+	case <-time.After(150 * time.Millisecond):
+		return nil
+	}
 }
 
 // completeDials unblocks calls to Dial for the given nodes.
-func (d *dialTestDialer) completeDials(nodes []*enode.Node) error {
-	for _, n := range nodes {
-		req := d.blocked[n.ID()]
+func (d *dialTestDialer) completeDials(nodes map[enode.ID]error) error {
+	for id, err := range nodes {
+		req := d.blocked[id]
 		if req == nil {
-			return fmt.Errorf("can't complete dial to %v", n.ID())
+			return fmt.Errorf("can't complete dial to %v", id)
 		}
-		req.unblock <- nil
+		req.unblock <- err
 	}
 	return nil
 }
 
-func uintID(i uint32) enode.ID {
-	var id enode.ID
-	binary.BigEndian.PutUint32(id[:], i)
-	return id
+// dialTestResolver tracks calls to resolve.
+type dialTestResolver struct {
+	mu      sync.Mutex
+	calls   []enode.ID
+	answers map[enode.ID]*enode.Node
 }
 
-// for TestDialResolve
-type resolveMock struct {
-	calls  []*enode.Node
-	answer *enode.Node
+func (t *dialTestResolver) setAnswers(m map[enode.ID]*enode.Node) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.answers = m
+	t.calls = nil
 }
 
-func (t *resolveMock) Resolve(n *enode.Node) *enode.Node {
-	t.calls = append(t.calls, n)
-	return t.answer
+func (t *dialTestResolver) checkCalls() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, id := range t.calls {
+		if _, ok := t.answers[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *dialTestResolver) Resolve(n *enode.Node) *enode.Node {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.calls = append(t.calls, n.ID())
+	return t.answers[n.ID()]
 }

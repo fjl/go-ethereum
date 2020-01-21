@@ -250,7 +250,10 @@ func (d *dialer2) startStaticDials() {
 		if _, ok := d.peers[id]; ok {
 			continue
 		}
-		if !d.atCapacity() && d.checkDial(task.dest) == nil {
+		if d.atCapacity() {
+			break
+		}
+		if d.checkDial(task.dest) == nil {
 			d.startDial(task)
 		}
 	}
@@ -273,7 +276,7 @@ func (d *dialer2) startDial(task *dialTask2) {
 type dialTask2 struct {
 	flags        connFlag
 	dest         *enode.Node
-	lastResolved time.Time
+	lastResolved mclock.AbsTime
 	resolveDelay time.Duration
 }
 
@@ -287,6 +290,7 @@ func (t *dialTask2) run(d *dialer2) {
 			return
 		}
 	}
+
 	err := t.dial(d, t.dest)
 	if err != nil {
 		d.log.Trace("Dial error", "task", t, "err", err)
@@ -313,11 +317,11 @@ func (t *dialTask2) resolve(d *dialer2) bool {
 	if t.resolveDelay == 0 {
 		t.resolveDelay = initialResolveDelay
 	}
-	if time.Since(t.lastResolved) < t.resolveDelay {
+	if t.lastResolved > 0 && time.Duration(d.clock.Now()-t.lastResolved) < t.resolveDelay {
 		return false
 	}
 	resolved := d.resolver.Resolve(t.dest)
-	t.lastResolved = time.Now()
+	t.lastResolved = d.clock.Now()
 	if resolved == nil {
 		t.resolveDelay *= 2
 		if t.resolveDelay > maxResolveDelay {

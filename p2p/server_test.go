@@ -217,7 +217,7 @@ func TestServerAtCap(t *testing.T) {
 			MaxPeers:     10,
 			NoDial:       true,
 			NoDiscovery:  true,
-			TrustedNodes: []*enode.Node{newNode(trustedID, nil)},
+			TrustedNodes: []*enode.Node{newNode(trustedID, "")},
 		},
 	}
 	if err := srv.Start(); err != nil {
@@ -255,14 +255,14 @@ func TestServerAtCap(t *testing.T) {
 	}
 
 	// Remove from trusted set and try again
-	srv.RemoveTrustedPeer(newNode(trustedID, nil))
+	srv.RemoveTrustedPeer(newNode(trustedID, ""))
 	c = newconn(trustedID)
 	if err := srv.checkpoint(c, srv.checkpointPostHandshake); err != DiscTooManyPeers {
 		t.Error("wrong error for insert:", err)
 	}
 
 	// Add anotherID to trusted set and try again
-	srv.AddTrustedPeer(newNode(anotherID, nil))
+	srv.AddTrustedPeer(newNode(anotherID, ""))
 	c = newconn(anotherID)
 	if err := srv.checkpoint(c, srv.checkpointPostHandshake); err != nil {
 		t.Error("unexpected error for trusted conn @posthandshake:", err)
