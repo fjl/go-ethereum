@@ -43,7 +43,7 @@ func TestExpHeap(t *testing.T) {
 		t.Fatal("heap doesn't contain all live items")
 	}
 
-	h.expire(exptimeA.Add(1))
+	h.expire(exptimeA.Add(1), nil)
 	if h.nextExpiry() != exptimeB {
 		t.Fatal("wrong nextExpiry")
 	}

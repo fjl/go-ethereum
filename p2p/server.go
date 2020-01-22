@@ -596,7 +596,7 @@ func (srv *Server) setupDiscovery() error {
 
 func (srv *Server) setupDialer() {
 	config := dialerConfig{
-		maxDynPeers:    srv.maxDialedConns(),
+		maxDialPeers:   srv.maxDialedConns(),
 		maxActiveDials: srv.MaxPendingPeers,
 		resolver:       srv.ntab,
 		log:            srv.Logger,
@@ -705,35 +705,29 @@ running:
 			// At this point the connection is past the protocol handshake.
 			// Its capabilities are known and the remote identity is verified.
 			err := srv.addPeerChecks(peers, inboundCount, c)
-			if err == nil {
-				// The handshakes are done and it passed all checks.
-				p := newPeer(srv.log, c, srv.Protocols)
-				// If message events are enabled, pass the peerFeed
-				// to the peer
-				if srv.EnableMsgEvents {
-					p.events = &srv.peerFeed
-				}
-				name := truncateName(c.name)
-				p.log.Debug("Adding p2p peer", "addr", p.RemoteAddr(), "peers", len(peers)+1, "name", name)
-				go srv.runPeer(p)
-				peers[c.node.ID()] = p
-				if p.Inbound() {
-					inboundCount++
-				}
-				if conn, ok := c.fd.(*meteredConn); ok {
-					conn.handshakeDone(p)
-				}
-			}
-			// The dialer logic relies on the assumption that
-			// dial tasks complete after the peer has been added or
-			// discarded. Unblock the task last.
 			c.cont <- err
+			if err != nil {
+				continue
+			}
+
+			// The handshakes are done and it passed all checks.
+			p := srv.launchPeer(c)
+			peers[c.node.ID()] = p
+			p.log.Debug("Adding p2p peer", "addr", p.RemoteAddr(), "peers", len(peers), "name", truncateName(c.name))
+			srv.dialer.peerAdded(c)
+			if conn, ok := c.fd.(*meteredConn); ok {
+				conn.handshakeDone(p)
+			}
+			if p.Inbound() {
+				inboundCount++
+			}
 
 		case pd := <-srv.delpeer:
 			// A peer disconnected.
 			d := common.PrettyDuration(mclock.Now() - pd.created)
-			pd.log.Debug("Removing p2p peer", "addr", pd.RemoteAddr(), "peers", len(peers)-1, "duration", d, "req", pd.requested, "err", pd.err)
 			delete(peers, pd.ID())
+			pd.log.Debug("Removing p2p peer", "addr", pd.RemoteAddr(), "peers", len(peers), "duration", d, "req", pd.requested, "err", pd.err)
+			srv.dialer.peerRemoved(pd.rw)
 			if pd.Inbound() {
 				inboundCount--
 			}
@@ -880,7 +874,7 @@ func (srv *Server) checkInboundConn(fd net.Conn, remoteIP net.IP) error {
 	}
 	// Reject Internet peers that try too often.
 	now := srv.clock.Now()
-	srv.inboundHistory.expire(now)
+	srv.inboundHistory.expire(now, nil)
 	if !netutil.IsLAN(remoteIP) && srv.inboundHistory.contains(remoteIP.String()) {
 		return fmt.Errorf("too many attempts")
 	}
@@ -990,6 +984,17 @@ func (srv *Server) checkpoint(c *conn, stage chan<- *conn) error {
 		return errServerStopped
 	}
 	return <-c.cont
+}
+
+func (srv *Server) launchPeer(c *conn) *Peer {
+	p := newPeer(srv.log, c, srv.Protocols)
+	if srv.EnableMsgEvents {
+		// If message events are enabled, pass the peerFeed
+		// to the peer.
+		p.events = &srv.peerFeed
+	}
+	go srv.runPeer(p)
+	return p
 }
 
 // runPeer runs in its own goroutine for each peer.

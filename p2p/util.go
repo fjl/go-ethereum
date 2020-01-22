@@ -52,9 +52,12 @@ func (h expHeap) contains(item string) bool {
 }
 
 // expire removes items with expiry time before 'now'.
-func (h *expHeap) expire(now mclock.AbsTime) {
+func (h *expHeap) expire(now mclock.AbsTime, onExp func(string)) {
 	for h.Len() > 0 && h.nextExpiry() < now {
-		heap.Pop(h)
+		item := heap.Pop(h)
+		if onExp != nil {
+			onExp(item.(expItem).item)
+		}
 	}
 }
 
