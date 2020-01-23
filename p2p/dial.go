@@ -18,9 +18,11 @@ package p2p
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand"
+	mrand "math/rand"
 	"net"
 	"sync"
 	"time"
@@ -118,10 +120,13 @@ type dialerConfig struct {
 	dialer         NodeDialer
 	log            log.Logger
 	clock          mclock.Clock
-	rand           *rand.Rand
+	rand           *mrand.Rand
 }
 
 func (cfg dialerConfig) withDefaults() dialerConfig {
+	if cfg.maxActiveDials == 0 {
+		cfg.maxDialPeers = defaultMaxPendingPeers
+	}
 	if cfg.log == nil {
 		cfg.log = log.Root()
 	}
@@ -129,7 +134,10 @@ func (cfg dialerConfig) withDefaults() dialerConfig {
 		cfg.clock = mclock.System{}
 	}
 	if cfg.rand == nil {
-		cfg.rand = rand.New(rand.NewSource(0x33))
+		seedb := make([]byte, 8)
+		crand.Read(seedb)
+		seed := int64(binary.BigEndian.Uint64(seedb))
+		cfg.rand = mrand.New(mrand.NewSource(seed))
 	}
 	return cfg
 }
