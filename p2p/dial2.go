@@ -62,9 +62,8 @@ type dialer2 struct {
 	peersetCh   chan map[enode.ID]*Peer
 	addStaticCh chan *enode.Node
 	remStaticCh chan *enode.Node
-	addPeerCh chan *conn
-	remPeerCh chan *conn
-
+	addPeerCh   chan *conn
+	remPeerCh   chan *conn
 
 	// State of loop.
 	dialing       map[enode.ID]*dialTask2
@@ -185,12 +184,11 @@ loop:
 			next := time.Duration(d.history.nextExpiry() - d.clock.Now())
 			historyTimer = d.clock.AfterFunc(next, func() { historyExp <- struct{}{} })
 		}
-		
+
 		select {
 		case node := <-nodesCh:
-			d.log.Trace("Node found", "id", node.ID())
 			if err := d.checkDial(node); err != nil {
-				d.log.Trace("Discarding dial candidate", "id", node.ID(), "ip", node.IP(), "err", err)
+				d.log.Trace("Discarding dial candidate", "id", node.ID(), "ip", node.IP(), "reason", err)
 			} else {
 				task := &dialTask2{flags: dynDialedConn, dest: node}
 				d.startDial(task)
@@ -204,7 +202,6 @@ loop:
 			}
 
 		case c := <-d.addPeerCh:
-			d.log.Trace("Peer added", "id", c.node.ID(), "p", len(d.peers) + 1)
 			if c.is(dynDialedConn) || c.is(staticDialedConn) {
 				d.dialPeerCount++
 			}
@@ -212,13 +209,12 @@ loop:
 			// TODO: cancel dials to connected peers
 
 		case c := <-d.remPeerCh:
-			d.log.Trace("Peer removed", "id", c.node.ID(), "p", len(d.peers) - 1)
 			if c.is(dynDialedConn) || c.is(staticDialedConn) {
 				d.dialPeerCount--
 			}
 			delete(d.peers, c.node.ID())
 			d.updateStaticPool(c.node.ID())
-			
+
 		case node := <-d.addStaticCh:
 			id := node.ID()
 			d.log.Trace("Adding static node", "id", id, "ip", node.IP())
@@ -246,10 +242,9 @@ loop:
 			}
 
 		case <-historyExp:
-			d.log.Trace("Dial history expire")
 			historyTimer.Stop()
 			historyTimer = nil
-			d.history.expire(d.clock.Now(), func (hkey string) {
+			d.history.expire(d.clock.Now(), func(hkey string) {
 				var id enode.ID
 				copy(id[:], hkey)
 				d.updateStaticPool(id)
@@ -290,7 +285,7 @@ func (d *dialer2) numDialSlots() int {
 		slots = d.maxActiveDials
 	}
 	free := slots - len(d.dialing)
-	d.log.Trace("Dial slot stats", "free", free, "total", slots, "p", d.dialPeerCount, "maxp", d.maxDialPeers, "pool", len(d.staticTaskPool))
+	// d.log.Trace("Dial slot stats", "free", free, "total", slots, "p", d.dialPeerCount, "maxp", d.maxDialPeers, "pool", len(d.staticTaskPool))
 	return free
 }
 
