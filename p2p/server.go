@@ -705,22 +705,20 @@ running:
 			// At this point the connection is past the protocol handshake.
 			// Its capabilities are known and the remote identity is verified.
 			err := srv.addPeerChecks(peers, inboundCount, c)
+			if err == nil {
+				// The handshakes are done and it passed all checks.
+				p := srv.launchPeer(c)
+				peers[c.node.ID()] = p
+				p.log.Debug("Adding p2p peer", "addr", p.RemoteAddr(), "peers", len(peers), "name", truncateName(c.name))
+				srv.dialer.peerAdded(c)
+				if conn, ok := c.fd.(*meteredConn); ok {
+					conn.handshakeDone(p)
+				}
+				if p.Inbound() {
+					inboundCount++
+				}
+			}
 			c.cont <- err
-			if err != nil {
-				continue
-			}
-
-			// The handshakes are done and it passed all checks.
-			p := srv.launchPeer(c)
-			peers[c.node.ID()] = p
-			p.log.Debug("Adding p2p peer", "addr", p.RemoteAddr(), "peers", len(peers), "name", truncateName(c.name))
-			srv.dialer.peerAdded(c)
-			if conn, ok := c.fd.(*meteredConn); ok {
-				conn.handshakeDone(p)
-			}
-			if p.Inbound() {
-				inboundCount++
-			}
 
 		case pd := <-srv.delpeer:
 			// A peer disconnected.
