@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"sync"
 	"testing"
@@ -150,13 +151,13 @@ func TestDialSchedNetRestrict(t *testing.T) {
 	})
 }
 
-// This test checks that static dials are launched.
+// This test checks that static dials work and obey the limits.
 func TestDialSchedStaticDial(t *testing.T) {
 	t.Parallel()
 
 	config := dialConfig{
-		maxActiveDials: 2,
-		maxDialPeers:   3,
+		maxActiveDials: 5,
+		maxDialPeers:   4,
 	}
 	runDialTest(t, config, []dialTestRound{
 		// Static dials are launched for the nodes that
@@ -167,37 +168,58 @@ func TestDialSchedStaticDial(t *testing.T) {
 				{flags: dynDialedConn, node: newNode(uintID(0x02), "127.0.0.2")},
 			},
 			update: func(d *dialScheduler) {
+				// These two are not dialed because they're already connected
+				// as dynamic peers.
 				d.addStatic(newNode(uintID(0x01), "127.0.0.1:30303"))
 				d.addStatic(newNode(uintID(0x02), "127.0.0.2:30303"))
+				// These nodes will be dialed:
 				d.addStatic(newNode(uintID(0x03), "127.0.0.3:30303"))
 				d.addStatic(newNode(uintID(0x04), "127.0.0.4:30303"))
 				d.addStatic(newNode(uintID(0x05), "127.0.0.5:30303"))
+				d.addStatic(newNode(uintID(0x06), "127.0.0.6:30303"))
+				d.addStatic(newNode(uintID(0x07), "127.0.0.7:30303"))
+				d.addStatic(newNode(uintID(0x08), "127.0.0.8:30303"))
+				d.addStatic(newNode(uintID(0x09), "127.0.0.9:30303"))
 			},
 			wantNewDials: []*enode.Node{
 				newNode(uintID(0x03), "127.0.0.3:30303"),
 				newNode(uintID(0x04), "127.0.0.4:30303"),
+				newNode(uintID(0x05), "127.0.0.5:30303"),
+				newNode(uintID(0x06), "127.0.0.6:30303"),
 			},
 		},
-		// Dial to 3 completes, filling the last peer slot. No new tasks.
+		// Dial to 0x03 completes, filling a peer slot. One slot remains,
+		// two dials are launched to attempt to fill it.
 		{
 			succeeded: []enode.ID{
 				uintID(0x03),
 			},
 			failed: []enode.ID{
 				uintID(0x04),
+				uintID(0x05),
+				uintID(0x06),
 			},
 			wantResolves: map[enode.ID]*enode.Node{
 				uintID(0x04): nil,
+				uintID(0x05): nil,
+				uintID(0x06): nil,
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(0x08), "127.0.0.8:30303"),
+				newNode(uintID(0x09), "127.0.0.9:30303"),
 			},
 		},
-		// Peer 1 drops. New dials are launched to fill the slot.
+		// Peer 0x01 drops and 0x07 (which is a static node) connects as inbound peer.
+		// Only 0x01 is dialed.
 		{
+			peersAdded: []*conn{
+				{flags: inboundConn, node: newNode(uintID(0x07), "127.0.0.7")},
+			},
 			peersRemoved: []enode.ID{
 				uintID(0x01),
 			},
 			wantNewDials: []*enode.Node{
 				newNode(uintID(0x01), "127.0.0.1:30303"),
-				newNode(uintID(0x05), "127.0.0.5:30303"),
 			},
 		},
 	})
@@ -312,6 +334,7 @@ func runDialTest(t *testing.T, config dialConfig, rounds []dialTestRound) {
 	config.dialer = dialer
 	config.resolver = resolver
 	config.log = testlog.Logger(t, log.LvlTrace)
+	config.rand = rand.New(rand.NewSource(0x1111))
 
 	// Set up the dialer. The setup function below runs on the dialTask
 	// goroutine and adds the peer.

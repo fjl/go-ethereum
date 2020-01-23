@@ -244,9 +244,14 @@ loop:
 			if c.is(dynDialedConn) || c.is(staticDialedConn) {
 				d.dialPeers++
 			}
-			d.peers[c.node.ID()] = c.flags
+			id := c.node.ID()
+			d.peers[id] = c.flags
+			// Remove from static pool because the node is now connected.
+			task := d.static[id]
+			if task != nil && task.staticPoolIndex >= 0 {
+				d.removeFromStaticPool(task.staticPoolIndex)
+			}
 			// TODO: cancel dials to connected peers
-			// TODO: remove from static pool
 
 		case c := <-d.remPeerCh:
 			if c.is(dynDialedConn) || c.is(staticDialedConn) {
