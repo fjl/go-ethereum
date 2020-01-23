@@ -608,6 +608,9 @@ func (srv *Server) setupDialScheduler() {
 		config.dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
 	}
 	srv.dialsched = newDialScheduler(config, srv.discmix, srv.SetupConn)
+	for _, n := range srv.StaticNodes {
+		srv.dialsched.addStatic(n)
+	}
 }
 
 func (srv *Server) maxInboundConns() int {
