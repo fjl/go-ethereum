@@ -33,7 +33,7 @@ import (
 )
 
 // This test checks that dynamic dials are launched from discovery results.
-func TestDialStateDynDial(t *testing.T) {
+func TestDialSchedDynDial(t *testing.T) {
 	t.Parallel()
 
 	config := dialerConfig{maxActiveDials: 5, maxDialPeers: 4}
@@ -112,7 +112,7 @@ func TestDialStateDynDial(t *testing.T) {
 }
 
 // This test checks that candidates that do not match the netrestrict list are not dialed.
-func TestDialStateNetRestrict(t *testing.T) {
+func TestDialSchedNetRestrict(t *testing.T) {
 	t.Parallel()
 
 	nodes := []*enode.Node{
@@ -148,7 +148,7 @@ func TestDialStateNetRestrict(t *testing.T) {
 }
 
 // This test checks that static dials are launched.
-func TestDialStateStaticDial(t *testing.T) {
+func TestDialSchedStaticDial(t *testing.T) {
 	t.Parallel()
 
 	config := dialerConfig{
@@ -201,7 +201,7 @@ func TestDialStateStaticDial(t *testing.T) {
 }
 
 // This test checks that past dials are not retried for some time.
-func TestDialStateHistory(t *testing.T) {
+func TestDialSchedHistory(t *testing.T) {
 	t.Parallel()
 
 	config := dialerConfig{
@@ -245,7 +245,7 @@ func TestDialStateHistory(t *testing.T) {
 	})
 }
 
-func TestDialStateResolve(t *testing.T) {
+func TestDialSchedResolve(t *testing.T) {
 	t.Parallel()
 
 	config := dialerConfig{
@@ -284,12 +284,12 @@ func TestDialStateResolve(t *testing.T) {
 // Code below here is the framework for the tests above.
 
 type dialTestRound struct {
-	peersAdded []*conn
+	peersAdded   []*conn
 	peersRemoved []enode.ID
-	update       func(*dialScheduler)     // called at beginning of round
-	discovered   []*enode.Node      // newly discovered nodes
-	succeeded    []enode.ID
-	failed       []enode.ID
+	update       func(*dialScheduler) // called at beginning of round
+	discovered   []*enode.Node        // newly discovered nodes
+	succeeded    []enode.ID           // dials which succeed this round
+	failed       []enode.ID           // dials which fail this round
 	wantResolves map[enode.ID]*enode.Node
 	wantNewDials []*enode.Node // dials that should be launched in this round
 }
@@ -300,8 +300,8 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 		iterator = newDialTestIterator()
 		dialer   = newDialTestDialer()
 		resolver = new(dialTestResolver)
-		peers = make(map[enode.ID]*conn)
-		setupCh = make(chan *conn)
+		peers    = make(map[enode.ID]*conn)
+		setupCh  = make(chan *conn)
 	)
 
 	// Override config.
@@ -312,15 +312,15 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 
 	// Set up the dialer. The setup function below runs on the dialTask
 	// goroutine and adds the peer.
-	var dialstate *dialScheduler
+	var dialsched *dialScheduler
 	setup := func(fd net.Conn, f connFlag, node *enode.Node) error {
 		conn := &conn{flags: f, node: node}
-		dialstate.peerAdded(conn)
+		dialsched.peerAdded(conn)
 		setupCh <- conn
 		return nil
 	}
-	dialstate = newDialer2(config, iterator, setup)
-	defer dialstate.stop()
+	dialsched = newDialer2(config, iterator, setup)
+	defer dialsched.stop()
 
 	for i, round := range rounds {
 		// Apply peer set updates.
@@ -328,7 +328,7 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 			if peers[c.node.ID()] != nil {
 				t.Fatalf("round %d: peer %v already connected", i, c.node.ID())
 			}
-			dialstate.peerAdded(c)
+			dialsched.peerAdded(c)
 			peers[c.node.ID()] = c
 		}
 		for _, id := range round.peersRemoved {
@@ -336,14 +336,14 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 			if c == nil {
 				t.Fatalf("round %d: can't remove non-existent peer %v", i, id)
 			}
-			dialstate.peerRemoved(c)
+			dialsched.peerRemoved(c)
 		}
-		
+
 		// Init round.
 		t.Logf("round %d (%d peers)", i, len(peers))
 		resolver.setAnswers(round.wantResolves)
 		if round.update != nil {
-			round.update(dialstate)
+			round.update(dialsched)
 		}
 		iterator.addNodes(round.discovered)
 
@@ -358,7 +358,7 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 		if err := dialer.completeDials(round.failed, errors.New("oops")); err != nil {
 			t.Fatalf("round %d: %v", i, err)
 		}
-		
+
 		// Wait for new tasks.
 		if err := dialer.waitForDials(round.wantNewDials); err != nil {
 			t.Fatalf("round %d: %v", i, err)
