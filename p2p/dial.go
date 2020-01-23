@@ -83,7 +83,7 @@ var (
 //
 type dialScheduler struct {
 	dialerConfig
-	setupFunc dialerSetupFunc
+	setupFunc dialSetupFunc
 
 	wg          sync.WaitGroup
 	cancel      context.CancelFunc
@@ -96,15 +96,18 @@ type dialScheduler struct {
 	addPeerCh   chan *conn
 	remPeerCh   chan *conn
 
-	// State of loop.
-	dialing       map[enode.ID]*dialTask
-	peers         map[enode.ID]connFlag
-	history       expHeap
-	dialPeerCount int
+	// Everything below here belongs to loop and
+	// should only be accessed by code on the loop goroutine.
 
-	static         map[enode.ID]*dialTask
-	staticTaskPool []*dialTask
+	dialing       map[enode.ID]*dialTask // active tasks
+	peers         map[enode.ID]connFlag  // all current peers
+	history       expHeap                // recently dialed nodes
+	dialPeerCount int                    // current number of dialed peers
+	static        map[enode.ID]*dialTask // all static tasks
+	staticPool    []*dialTask            // static tasks usable right now
 }
+
+type dialSetupFunc func(net.Conn, connFlag, *enode.Node) error
 
 type dialerConfig struct {
 	self           enode.ID         // our own ID
@@ -117,8 +120,6 @@ type dialerConfig struct {
 	clock          mclock.Clock
 	rand           *rand.Rand
 }
-
-type dialerSetupFunc func(net.Conn, connFlag, *enode.Node) error
 
 func (cfg dialerConfig) withDefaults() dialerConfig {
 	if cfg.log == nil {
@@ -133,7 +134,7 @@ func (cfg dialerConfig) withDefaults() dialerConfig {
 	return cfg
 }
 
-func newDialer2(config dialerConfig, it enode.Iterator, setupFunc dialerSetupFunc) *dialScheduler {
+func newDialer2(config dialerConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
 	d := &dialScheduler{
 		dialerConfig: config.withDefaults(),
 		setupFunc:    setupFunc,
@@ -200,6 +201,7 @@ func (d *dialScheduler) loop(it enode.Iterator) {
 		historyTimer mclock.Timer
 		historyExp   = make(chan struct{}, 1)
 	)
+
 loop:
 	for {
 		// Launch new dials if slots are available.
@@ -265,8 +267,8 @@ loop:
 				continue
 			}
 			delete(d.static, id)
-			for i := range d.staticTaskPool {
-				if d.staticTaskPool[i].dest.ID() == id {
+			for i := range d.staticPool {
+				if d.staticPool[i].dest.ID() == id {
 					d.removeFromStaticPool(i)
 					break
 				}
@@ -350,9 +352,9 @@ func (d *dialScheduler) checkDial(n *enode.Node) error {
 
 // startStaticDials starts all configured static dial tasks.
 func (d *dialScheduler) startStaticDials(n int) (started int) {
-	for started = 0; started < n && len(d.staticTaskPool) > 0; started++ {
-		idx := d.rand.Intn(len(d.staticTaskPool))
-		task := d.staticTaskPool[idx]
+	for started = 0; started < n && len(d.staticPool) > 0; started++ {
+		idx := d.rand.Intn(len(d.staticPool))
+		task := d.staticPool[idx]
 		d.startDial(task)
 		d.removeFromStaticPool(idx)
 	}
@@ -374,19 +376,19 @@ func (d *dialScheduler) addToStaticPool(task *dialTask) {
 		panic("attempt to add task to staticPool twice")
 	}
 	task.inStaticPool = true
-	d.staticTaskPool = append(d.staticTaskPool, task)
+	d.staticPool = append(d.staticPool, task)
 }
 
 func (d *dialScheduler) removeFromStaticPool(idx int) {
-	task := d.staticTaskPool[idx]
+	task := d.staticPool[idx]
 	if !task.inStaticPool {
 		panic("attempt to remove non-existent task from staticPool")
 	}
 	task.inStaticPool = false
 	// Swap with last element, then shorten pool.
-	end := len(d.staticTaskPool) - 1
-	d.staticTaskPool[end], d.staticTaskPool[idx] = d.staticTaskPool[idx], d.staticTaskPool[end]
-	d.staticTaskPool = d.staticTaskPool[:end]
+	end := len(d.staticPool) - 1
+	d.staticPool[end], d.staticPool[idx] = d.staticPool[idx], d.staticPool[end]
+	d.staticPool = d.staticPool[:end]
 }
 
 // startDial runs the given dial task in a separate goroutine.
