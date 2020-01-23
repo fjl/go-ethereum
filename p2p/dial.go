@@ -212,9 +212,8 @@ func (d *dialScheduler) peerRemoved(c *conn) {
 // loop is the main loop of the dialer.
 func (d *dialScheduler) loop(it enode.Iterator) {
 	var (
-		nodesCh      chan *enode.Node
-		historyTimer mclock.Timer
-		historyExp   = make(chan struct{}, 1)
+		nodesCh    chan *enode.Node
+		historyExp = make(chan struct{}, 1)
 	)
 
 loop:
@@ -227,11 +226,7 @@ loop:
 		} else {
 			nodesCh = nil
 		}
-		// Rearm history timer.
-		if historyTimer == nil && len(d.history) > 0 {
-			next := time.Duration(d.history.nextExpiry() - d.clock.Now())
-			historyTimer = d.clock.AfterFunc(next, func() { historyExp <- struct{}{} })
-		}
+		d.rearmHistoryTimer(historyExp)
 
 		select {
 		case node := <-nodesCh:
@@ -243,7 +238,6 @@ loop:
 
 		case task := <-d.doneCh:
 			id := task.dest.ID()
-			d.log.Trace("Dial done", "id", id)
 			delete(d.dialing, id)
 			d.updateStaticPool(id)
 
@@ -264,8 +258,9 @@ loop:
 
 		case node := <-d.addStaticCh:
 			id := node.ID()
-			d.log.Trace("Adding static node", "id", id, "ip", node.IP())
-			if d.static[id] != nil {
+			_, exists := d.static[id]
+			d.log.Trace("Adding static node", "id", id, "ip", node.IP(), "ok", !exists)
+			if exists {
 				continue
 			}
 			task := newDialTask(node, staticDialedConn)
@@ -276,8 +271,8 @@ loop:
 
 		case node := <-d.remStaticCh:
 			id := node.ID()
-			d.log.Trace("Removing static node", "id", id)
 			task := d.static[id]
+			d.log.Trace("Removing static node", "id", id, "ok", task != nil)
 			if task != nil {
 				delete(d.static, id)
 				if task.staticPoolIndex >= 0 {
@@ -286,13 +281,7 @@ loop:
 			}
 
 		case <-historyExp:
-			historyTimer.Stop()
-			historyTimer = nil
-			d.history.expire(d.clock.Now(), func(hkey string) {
-				var id enode.ID
-				copy(id[:], hkey)
-				d.updateStaticPool(id)
-			})
+			d.expireHistory()
 
 		case <-d.ctx.Done():
 			it.Close()
@@ -300,8 +289,8 @@ loop:
 		}
 	}
 
-	if historyTimer != nil {
-		historyTimer.Stop()
+	if d.historyTimer != nil {
+		d.historyTimer.Stop()
 	}
 	for range d.dialing {
 		<-d.doneCh
@@ -320,6 +309,36 @@ func (d *dialScheduler) readNodes(it enode.Iterator) {
 		case <-d.ctx.Done():
 		}
 	}
+}
+
+// rearmHistoryTimer configures d.historyTimer to fire when the
+// next item in d.history expires.
+func (d *dialScheduler) rearmHistoryTimer(ch chan struct{}) {
+	if len(d.history) == 0 || d.historyTimerTime == d.history.nextExpiry() {
+		return
+	}
+	if d.historyTimer != nil {
+		// Timer already set, but the time is wrong. Stop it and drain
+		// the channel to ensure its goroutine doesn't get stuck.
+		if !d.historyTimer.Stop() {
+			<-ch
+		}
+	}
+	d.historyTimerTime = d.history.nextExpiry()
+	timeout := time.Duration(d.historyTimerTime - d.clock.Now())
+	d.historyTimer = d.clock.AfterFunc(timeout, func() { ch <- struct{}{} })
+}
+
+// expireHistory removes expired items from d.history.
+func (d *dialScheduler) expireHistory() {
+	d.historyTimer.Stop()
+	d.historyTimer = nil
+	d.historyTimerTime = 0
+	d.history.expire(d.clock.Now(), func(hkey string) {
+		var id enode.ID
+		copy(id[:], hkey)
+		d.updateStaticPool(id)
+	})
 }
 
 // freeDialSlots returns the number of free dial slots. The result can be negative
