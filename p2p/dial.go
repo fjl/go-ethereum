@@ -132,7 +132,7 @@ type dialerConfig struct {
 
 func (cfg dialerConfig) withDefaults() dialerConfig {
 	if cfg.maxActiveDials == 0 {
-		cfg.maxDialPeers = defaultMaxPendingPeers
+		cfg.maxActiveDials = defaultMaxPendingPeers
 	}
 	if cfg.log == nil {
 		cfg.log = log.Root()
