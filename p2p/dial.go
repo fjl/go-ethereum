@@ -261,7 +261,7 @@ loop:
 			_, exists := d.static[id]
 			d.log.Trace("Adding static node", "id", id, "ip", node.IP(), "ok", !exists)
 			if exists {
-				continue
+				continue loop
 			}
 			task := newDialTask(node, staticDialedConn)
 			d.static[id] = task
