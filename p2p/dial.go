@@ -151,17 +151,17 @@ func (cfg dialConfig) withDefaults() dialConfig {
 
 func newDialScheduler(config dialConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
 	d := &dialScheduler{
-		dialerConfig: config.withDefaults(),
-		setupFunc:    setupFunc,
-		dialing:      make(map[enode.ID]*dialTask),
-		static:       make(map[enode.ID]*dialTask),
-		peers:        make(map[enode.ID]connFlag),
-		doneCh:       make(chan *dialTask),
-		nodesIn:      make(chan *enode.Node),
-		addStaticCh:  make(chan *enode.Node),
-		remStaticCh:  make(chan *enode.Node),
-		addPeerCh:    make(chan *conn),
-		remPeerCh:    make(chan *conn),
+		dialConfig:  config.withDefaults(),
+		setupFunc:   setupFunc,
+		dialing:     make(map[enode.ID]*dialTask),
+		static:      make(map[enode.ID]*dialTask),
+		peers:       make(map[enode.ID]connFlag),
+		doneCh:      make(chan *dialTask),
+		nodesIn:     make(chan *enode.Node),
+		addStaticCh: make(chan *enode.Node),
+		remStaticCh: make(chan *enode.Node),
+		addPeerCh:   make(chan *conn),
+		remPeerCh:   make(chan *conn),
 	}
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	d.wg.Add(2)
