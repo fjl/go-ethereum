@@ -289,9 +289,7 @@ loop:
 		}
 	}
 
-	if d.historyTimer != nil {
-		d.historyTimer.Stop()
-	}
+	d.stopHistoryTimer(ch)
 	for range d.dialing {
 		<-d.doneCh
 	}
@@ -317,16 +315,17 @@ func (d *dialScheduler) rearmHistoryTimer(ch chan struct{}) {
 	if len(d.history) == 0 || d.historyTimerTime == d.history.nextExpiry() {
 		return
 	}
-	if d.historyTimer != nil {
-		// Timer already set, but the time is wrong. Stop it and drain
-		// the channel to ensure its goroutine doesn't get stuck.
-		if !d.historyTimer.Stop() {
-			<-ch
-		}
-	}
+	d.stopHistoryTimer(ch)
 	d.historyTimerTime = d.history.nextExpiry()
 	timeout := time.Duration(d.historyTimerTime - d.clock.Now())
 	d.historyTimer = d.clock.AfterFunc(timeout, func() { ch <- struct{}{} })
+}
+
+// stopHistoryTimer stops the timer and drains the channel it sends on.
+func (d *dialScheduler) stopHistoryTimer(ch chan struct{}) {
+	if d.historyTimer != nil && !d.historyTimer.Stop() {
+		<-ch
+	}
 }
 
 // expireHistory removes expired items from d.history.
