@@ -184,7 +184,7 @@ type Server struct {
 	ntab      *discover.UDPv4
 	DiscV5    *discv5.Network
 	discmix   *enode.FairMix
-	dialer    *dialer2
+	dialer    *dialScheduler
 
 	// Channels into the run loop.
 	quit                    chan struct{}

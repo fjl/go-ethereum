@@ -163,7 +163,7 @@ func TestDialStateStaticDial(t *testing.T) {
 				{flags: dynDialedConn, node: newNode(uintID(0x01), "127.0.0.1")},
 				{flags: dynDialedConn, node: newNode(uintID(0x02), "127.0.0.2")},
 			},
-			update: func(d *dialer2) {
+			update: func(d *dialScheduler) {
 				d.addStatic(newNode(uintID(0x01), "127.0.0.1:30303"))
 				d.addStatic(newNode(uintID(0x02), "127.0.0.2:30303"))
 				d.addStatic(newNode(uintID(0x03), "127.0.0.3:30303"))
@@ -211,7 +211,7 @@ func TestDialStateHistory(t *testing.T) {
 	runDialTest(t, config, []dialTestRound{
 		// Static dials are launched for the nodes that aren't yet connected.
 		{
-			update: func(d *dialer2) {
+			update: func(d *dialScheduler) {
 				d.addStatic(newNode(uintID(0x01), "127.0.0.1"))
 				d.addStatic(newNode(uintID(0x02), "127.0.0.2"))
 				d.addStatic(newNode(uintID(0x03), "127.0.0.3"))
@@ -256,7 +256,7 @@ func TestDialStateResolve(t *testing.T) {
 	resolved := newNode(uintID(0x01), "127.0.55.234:30303")
 	runDialTest(t, config, []dialTestRound{
 		{
-			update: func(d *dialer2) {
+			update: func(d *dialScheduler) {
 				d.addStatic(node)
 			},
 			wantResolves: map[enode.ID]*enode.Node{
@@ -286,7 +286,7 @@ func TestDialStateResolve(t *testing.T) {
 type dialTestRound struct {
 	peersAdded []*conn
 	peersRemoved []enode.ID
-	update       func(*dialer2)     // called at beginning of round
+	update       func(*dialScheduler)     // called at beginning of round
 	discovered   []*enode.Node      // newly discovered nodes
 	succeeded    []enode.ID
 	failed       []enode.ID
@@ -312,7 +312,7 @@ func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
 
 	// Set up the dialer. The setup function below runs on the dialTask
 	// goroutine and adds the peer.
-	var dialstate *dialer2
+	var dialstate *dialScheduler
 	setup := func(fd net.Conn, f connFlag, node *enode.Node) error {
 		conn := &conn{flags: f, node: node}
 		dialstate.peerAdded(conn)
