@@ -184,7 +184,7 @@ type Server struct {
 	ntab      *discover.UDPv4
 	DiscV5    *discv5.Network
 	discmix   *enode.FairMix
-	dialer    *dialScheduler
+	dialsched *dialScheduler
 
 	// Channels into the run loop.
 	quit                    chan struct{}
@@ -330,12 +330,12 @@ func (srv *Server) PeerCount() int {
 // server is shut down. If the connection fails for any reason, the server will
 // attempt to reconnect the peer.
 func (srv *Server) AddPeer(node *enode.Node) {
-	srv.dialer.addStatic(node)
+	srv.dialsched.addStatic(node)
 }
 
 // RemovePeer disconnects from the given node
 func (srv *Server) RemovePeer(node *enode.Node) {
-	srv.dialer.removeStatic(node)
+	srv.dialsched.removeStatic(node)
 }
 
 // AddTrustedPeer adds the given node to a reserved whitelist which allows the
@@ -610,7 +610,7 @@ func (srv *Server) setupDialer() {
 	if config.dialer == nil {
 		config.dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
 	}
-	srv.dialer = newDialer2(config, srv.discmix, srv.SetupConn)
+	srv.dialsched = newDialScheduler(config, srv.discmix, srv.SetupConn)
 }
 
 func (srv *Server) setupListening() error {
@@ -644,7 +644,7 @@ func (srv *Server) run() {
 	defer srv.loopWG.Done()
 	defer srv.nodedb.Close()
 	defer srv.discmix.Close()
-	defer srv.dialer.stop()
+	defer srv.dialsched.stop()
 
 	var (
 		peers        = make(map[enode.ID]*Peer)
@@ -710,7 +710,7 @@ running:
 				p := srv.launchPeer(c)
 				peers[c.node.ID()] = p
 				p.log.Debug("Adding p2p peer", "addr", p.RemoteAddr(), "peers", len(peers), "name", truncateName(c.name))
-				srv.dialer.peerAdded(c)
+				srv.dialsched.peerAdded(c)
 				if conn, ok := c.fd.(*meteredConn); ok {
 					conn.handshakeDone(p)
 				}
@@ -725,7 +725,7 @@ running:
 			d := common.PrettyDuration(mclock.Now() - pd.created)
 			delete(peers, pd.ID())
 			pd.log.Debug("Removing p2p peer", "addr", pd.RemoteAddr(), "peers", len(peers), "duration", d, "req", pd.requested, "err", pd.err)
-			srv.dialer.peerRemoved(pd.rw)
+			srv.dialsched.peerRemoved(pd.rw)
 			if pd.Inbound() {
 				inboundCount--
 			}

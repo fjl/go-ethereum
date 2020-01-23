@@ -149,7 +149,7 @@ func (cfg dialerConfig) withDefaults() dialerConfig {
 	return cfg
 }
 
-func newDialer2(config dialerConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
+func newDialScheduler(config dialerConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
 	d := &dialScheduler{
 		dialerConfig: config.withDefaults(),
 		setupFunc:    setupFunc,
