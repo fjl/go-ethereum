@@ -466,7 +466,7 @@ func (srv *Server) Start() (err error) {
 	if err := srv.setupDiscovery(); err != nil {
 		return err
 	}
-	srv.setupDialer()
+	srv.setupDialScheduler()
 
 	srv.loopWG.Add(1)
 	go srv.run()
@@ -594,7 +594,7 @@ func (srv *Server) setupDiscovery() error {
 	return nil
 }
 
-func (srv *Server) setupDialer() {
+func (srv *Server) setupDialScheduler() {
 	config := dialerConfig{
 		maxDialPeers:   srv.maxDialedConns(),
 		maxActiveDials: srv.MaxPendingPeers,
@@ -604,13 +604,25 @@ func (srv *Server) setupDialer() {
 		dialer:         srv.Dialer,
 		clock:          srv.clock,
 	}
-	if config.maxActiveDials == 0 {
-		config.maxActiveDials = defaultMaxPendingPeers
-	}
 	if config.dialer == nil {
 		config.dialer = tcpDialer{&net.Dialer{Timeout: defaultDialTimeout}}
 	}
 	srv.dialsched = newDialScheduler(config, srv.discmix, srv.SetupConn)
+}
+
+func (srv *Server) maxInboundConns() int {
+	return srv.MaxPeers - srv.maxDialedConns()
+}
+
+func (srv *Server) maxDialedConns() int {
+	if srv.NoDiscovery || srv.NoDial {
+		return 0
+	}
+	r := srv.DialRatio
+	if r == 0 {
+		r = defaultDialRatio
+	}
+	return srv.MaxPeers / r
 }
 
 func (srv *Server) setupListening() error {
@@ -778,21 +790,6 @@ func (srv *Server) addPeerChecks(peers map[enode.ID]*Peer, inboundCount int, c *
 	// Repeat the post-handshake checks because the
 	// peer set might have changed since those checks were performed.
 	return srv.postHandshakeChecks(peers, inboundCount, c)
-}
-
-func (srv *Server) maxInboundConns() int {
-	return srv.MaxPeers - srv.maxDialedConns()
-}
-
-func (srv *Server) maxDialedConns() int {
-	if srv.NoDiscovery || srv.NoDial {
-		return 0
-	}
-	r := srv.DialRatio
-	if r == 0 {
-		r = defaultDialRatio
-	}
-	return srv.MaxPeers / r
 }
 
 // listenLoop runs in its own goroutine and accepts
