@@ -164,7 +164,6 @@ func newDialScheduler(config dialerConfig, it enode.Iterator, setupFunc dialSetu
 		remPeerCh:    make(chan *conn),
 	}
 	d.ctx, d.cancel = context.WithCancel(context.Background())
-
 	d.wg.Add(2)
 	go d.readNodes(it)
 	go d.loop(it)
@@ -289,7 +288,7 @@ loop:
 		}
 	}
 
-	d.stopHistoryTimer(ch)
+	d.stopHistoryTimer(historyExp)
 	for range d.dialing {
 		<-d.doneCh
 	}
