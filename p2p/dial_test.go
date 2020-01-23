@@ -36,7 +36,10 @@ import (
 func TestDialSchedDynDial(t *testing.T) {
 	t.Parallel()
 
-	config := dialerConfig{maxActiveDials: 5, maxDialPeers: 4}
+	config := dialConfig{
+		maxActiveDials: 5,
+		maxDialPeers:   4,
+	}
 	runDialTest(t, config, []dialTestRound{
 		// 3 out of 4 peers are connected, leaving 2 dial slots.
 		// 9 nodes are discovered, but only 2 are dialed.
@@ -125,7 +128,7 @@ func TestDialSchedNetRestrict(t *testing.T) {
 		newNode(uintID(0x07), "127.0.2.7:30303"),
 		newNode(uintID(0x08), "127.0.2.8:30303"),
 	}
-	config := dialerConfig{
+	config := dialConfig{
 		netRestrict:    new(netutil.Netlist),
 		maxActiveDials: 10,
 		maxDialPeers:   10,
@@ -151,7 +154,7 @@ func TestDialSchedNetRestrict(t *testing.T) {
 func TestDialSchedStaticDial(t *testing.T) {
 	t.Parallel()
 
-	config := dialerConfig{
+	config := dialConfig{
 		maxActiveDials: 2,
 		maxDialPeers:   3,
 	}
@@ -204,7 +207,7 @@ func TestDialSchedStaticDial(t *testing.T) {
 func TestDialSchedHistory(t *testing.T) {
 	t.Parallel()
 
-	config := dialerConfig{
+	config := dialConfig{
 		maxActiveDials: 3,
 		maxDialPeers:   3,
 	}
@@ -248,7 +251,7 @@ func TestDialSchedHistory(t *testing.T) {
 func TestDialSchedResolve(t *testing.T) {
 	t.Parallel()
 
-	config := dialerConfig{
+	config := dialConfig{
 		maxActiveDials: 1,
 		maxDialPeers:   1,
 	}
@@ -294,7 +297,7 @@ type dialTestRound struct {
 	wantNewDials []*enode.Node // dials that should be launched in this round
 }
 
-func runDialTest(t *testing.T, config dialerConfig, rounds []dialTestRound) {
+func runDialTest(t *testing.T, config dialConfig, rounds []dialTestRound) {
 	var (
 		clock    = new(mclock.Simulated)
 		iterator = newDialTestIterator()

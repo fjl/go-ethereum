@@ -595,7 +595,7 @@ func (srv *Server) setupDiscovery() error {
 }
 
 func (srv *Server) setupDialScheduler() {
-	config := dialerConfig{
+	config := dialConfig{
 		maxDialPeers:   srv.maxDialedConns(),
 		maxActiveDials: srv.MaxPendingPeers,
 		resolver:       srv.ntab,

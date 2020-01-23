@@ -84,7 +84,7 @@ var (
 //    to create peer connections to nodes arriving through the iterator.
 //
 type dialScheduler struct {
-	dialerConfig
+	dialConfig
 	setupFunc   dialSetupFunc
 	wg          sync.WaitGroup
 	cancel      context.CancelFunc
@@ -118,7 +118,7 @@ type dialScheduler struct {
 
 type dialSetupFunc func(net.Conn, connFlag, *enode.Node) error
 
-type dialerConfig struct {
+type dialConfig struct {
 	self           enode.ID         // our own ID
 	maxDialPeers   int              // maximum number of connected dyn-dialed peers
 	maxActiveDials int              // maximum number of active dials
@@ -130,7 +130,7 @@ type dialerConfig struct {
 	rand           *mrand.Rand
 }
 
-func (cfg dialerConfig) withDefaults() dialerConfig {
+func (cfg dialConfig) withDefaults() dialConfig {
 	if cfg.maxActiveDials == 0 {
 		cfg.maxActiveDials = defaultMaxPendingPeers
 	}
@@ -149,7 +149,7 @@ func (cfg dialerConfig) withDefaults() dialerConfig {
 	return cfg
 }
 
-func newDialScheduler(config dialerConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
+func newDialScheduler(config dialConfig, it enode.Iterator, setupFunc dialSetupFunc) *dialScheduler {
 	d := &dialScheduler{
 		dialerConfig: config.withDefaults(),
 		setupFunc:    setupFunc,
