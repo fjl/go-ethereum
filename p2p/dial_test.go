@@ -225,6 +225,39 @@ func TestDialSchedStaticDial(t *testing.T) {
 	})
 }
 
+// This test checks that static dials are selected at random.
+func TestDialSchedManyStaticNodes(t *testing.T) {
+	t.Parallel()
+
+	config := dialConfig{maxDialPeers: 2}
+	runDialTest(t, config, []dialTestRound{
+		{
+			peersAdded: []*conn{
+				{flags: dynDialedConn, node: newNode(uintID(0xFFFE), "")},
+				{flags: dynDialedConn, node: newNode(uintID(0xFFFF), "")},
+			},
+			update: func(d *dialScheduler) {
+				for id := uint32(0); id < 2000; id++ {
+					n := newNode(uintID(id), "127.0.0.1:30303")
+					d.addStatic(n)
+				}
+			},
+		},
+		{
+			peersRemoved: []enode.ID{
+				uintID(0xFFFE),
+				uintID(0xFFFF),
+			},
+			wantNewDials: []*enode.Node{
+				newNode(uintID(0x0321), "127.0.0.1:30303"),
+				newNode(uintID(0x02E2), "127.0.0.1:30303"),
+				newNode(uintID(0x01E2), "127.0.0.1:30303"),
+				newNode(uintID(0x03D5), "127.0.0.1:30303"),
+			},
+		},
+	})
+}
+
 // This test checks that past dials are not retried for some time.
 func TestDialSchedHistory(t *testing.T) {
 	t.Parallel()
@@ -234,7 +267,6 @@ func TestDialSchedHistory(t *testing.T) {
 		maxDialPeers:   3,
 	}
 	runDialTest(t, config, []dialTestRound{
-		// Static dials are launched for the nodes that aren't yet connected.
 		{
 			update: func(d *dialScheduler) {
 				d.addStatic(newNode(uintID(0x01), "127.0.0.1"))
@@ -259,9 +291,9 @@ func TestDialSchedHistory(t *testing.T) {
 			},
 		},
 		// Nothing happens in this round because we're waiting for
-		// node 3's history entry to expire.
+		// node 0x3's history entry to expire.
 		{},
-		// The cache entry for node 3 has expired and is retried.
+		// The cache entry for node 0x03 has expired and is retried.
 		{
 			wantNewDials: []*enode.Node{
 				newNode(uintID(0x03), "127.0.0.3"),
