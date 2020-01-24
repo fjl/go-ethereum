@@ -853,7 +853,7 @@ func (srv *Server) listenLoop() {
 				addr = tcp
 			}
 			fd = newMeteredConn(fd, true, addr)
-			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr())
+			srv.log.Trace("Accepted connection", "addr", fd.RemoteAddr(), "h", len(srv.inboundHistory))
 		}
 		go func() {
 			srv.SetupConn(fd, inboundConn, nil)
