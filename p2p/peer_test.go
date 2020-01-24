@@ -51,9 +51,9 @@ var discard = Protocol{
 }
 
 // uintID encodes i into a node ID.
-func uintID(i uint32) enode.ID {
+func uintID(i uint16) enode.ID {
 	var id enode.ID
-	binary.LittleEndian.PutUint32(id[:], i)
+	binary.BigEndian.PutUint16(id[:], i)
 	return id
 }
 

@@ -238,7 +238,7 @@ func TestDialSchedManyStaticNodes(t *testing.T) {
 				{flags: dynDialedConn, node: newNode(uintID(0xFFFF), "")},
 			},
 			update: func(d *dialScheduler) {
-				for id := uint32(0); id < 2000; id++ {
+				for id := uint16(0); id < 2000; id++ {
 					n := newNode(uintID(id), "127.0.0.1:30303")
 					d.addStatic(n)
 				}
