@@ -164,8 +164,8 @@ func TestDialSchedStaticDial(t *testing.T) {
 		// aren't yet connected.
 		{
 			peersAdded: []*conn{
-				{flags: dynDialedConn, node: newNode(uintID(0x01), "127.0.0.1")},
-				{flags: dynDialedConn, node: newNode(uintID(0x02), "127.0.0.2")},
+				{flags: dynDialedConn, node: newNode(uintID(0x01), "127.0.0.1:30303")},
+				{flags: dynDialedConn, node: newNode(uintID(0x02), "127.0.0.2:30303")},
 			},
 			update: func(d *dialScheduler) {
 				// These two are not dialed because they're already connected
@@ -213,7 +213,7 @@ func TestDialSchedStaticDial(t *testing.T) {
 		// Only 0x01 is dialed.
 		{
 			peersAdded: []*conn{
-				{flags: inboundConn, node: newNode(uintID(0x07), "127.0.0.7")},
+				{flags: inboundConn, node: newNode(uintID(0x07), "127.0.0.7:30303")},
 			},
 			peersRemoved: []enode.ID{
 				uintID(0x01),
