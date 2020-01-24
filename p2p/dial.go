@@ -423,8 +423,8 @@ func (d *dialScheduler) startDial(task *dialTask) {
 	}()
 }
 
-// A dialTask is generated for each node that is dialed. Its
-// fields cannot be accessed while the task is running.
+// A dialTask is generated for each node that is dialed. All fields except
+// staticPoolIndex cannot be accessed while the task is running.
 type dialTask struct {
 	flags           connFlag
 	dest            *enode.Node
