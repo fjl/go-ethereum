@@ -49,6 +49,7 @@ type upnpClient interface {
 
 func (n *upnp) ExternalIP() (addr net.IP, err error) {
 	n.reqMutex.Lock()
+	time.Sleep(100 * time.Millisecond) // Waits for the router
 	defer n.reqMutex.Unlock()
 	ipString, err := n.client.GetExternalIPAddress()
 	if err != nil {
