@@ -72,6 +72,7 @@ func (n *upnp) AddMapping(protocol string, extport, intport int, desc string, li
 	n.DeleteMapping(protocol, extport, intport)
 
 	n.reqMutex.Lock()
+	time.Sleep(100 * time.Millisecond) // Waits for the router
 	defer n.reqMutex.Unlock()
 	return n.client.AddPortMapping("", uint16(extport), protocol, uint16(intport), ip.String(), true, desc, lifetimeS)
 }
@@ -101,6 +102,7 @@ func (n *upnp) internalAddress() (net.IP, error) {
 
 func (n *upnp) DeleteMapping(protocol string, extport, intport int) error {
 	n.reqMutex.Lock()
+	time.Sleep(100 * time.Millisecond) // Waits for the router
 	defer n.reqMutex.Unlock()
 	return n.client.DeletePortMapping("", uint16(extport), strings.ToUpper(protocol))
 }
