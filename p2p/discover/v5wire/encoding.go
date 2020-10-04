@@ -459,6 +459,9 @@ func (c *Codec) decodeWhoareyou(head *Header, headerData []byte) (Packet, error)
 func (c *Codec) decodeHandshakeMessage(fromAddr string, head *Header, headerData, msgData []byte) (n *enode.Node, p Packet, err error) {
 	node, auth, session, err := c.decodeHandshake(fromAddr, head, headerData)
 	if err != nil {
+		// Delete handshake record to prevent bad peer from
+		// potentially replaying bad handshakes continuously.
+		c.sc.deleteHandshake(head.src, fromAddr)
 		return nil, nil, err
 	}
 
