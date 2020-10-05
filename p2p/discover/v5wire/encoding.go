@@ -468,6 +468,9 @@ func (c *Codec) decodeHandshakeMessage(fromAddr string, head *Header, headerData
 	// Decrypt the message using the new session keys.
 	msg, err := c.decryptMessage(msgData, head.Nonce[:], headerData, session.readKey)
 	if err != nil {
+		// Drop handshake in the event we are unable to decrypt
+		// the encrypted message.
+		c.sc.deleteHandshake(auth.h.SrcID, fromAddr)
 		return node, msg, err
 	}
 
