@@ -24,13 +24,15 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/p2p/ethenr"
 	"github.com/ethereum/go-ethereum/rlp"
 	"golang.org/x/crypto/sha3"
 )
 
 // List of known secure identity schemes.
 var ValidSchemes = enr.SchemeMap{
-	"v4": V4ID{},
+	"v4":  V4ID{},
+	"eth": ethenr.EthID{},
 }
 
 var ValidSchemesForTesting = enr.SchemeMap{
