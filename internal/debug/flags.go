@@ -136,6 +136,10 @@ func init() {
 	log.Root().SetHandler(glogger)
 }
 
+func SetVmodule(rules string) {
+	glogger.Vmodule(rules)
+}
+
 // Setup initializes profiling and logging based on the CLI flags.
 // It should be called as early as possible in the program.
 func Setup(ctx *cli.Context) error {
