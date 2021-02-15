@@ -17,6 +17,7 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"net"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/discover/v4wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/urfave/cli.v1"
@@ -37,6 +39,7 @@ var (
 		Usage: "Node Discovery v4 tools",
 		Subcommands: []cli.Command{
 			discv4PingCommand,
+			discv4PingIPCommand,
 			discv4RequestRecordCommand,
 			discv4ResolveCommand,
 			discv4ResolveJSONCommand,
@@ -49,19 +52,28 @@ var (
 		Usage:     "Sends ping to a node",
 		Action:    discv4Ping,
 		ArgsUsage: "<node>",
+		Flags:     []cli.Flag{nodekeyFlag, nodekeySeedFlag, listenAddrFlag, bootnodesFlag},
+	}
+	discv4PingIPCommand = cli.Command{
+		Name:      "pingip",
+		Usage:     "Sends ping to IPs",
+		Action:    discv4PingIP,
+		ArgsUsage: "<ip:port>...",
+		Flags:     []cli.Flag{nodekeyFlag, nodekeySeedFlag, listenAddrFlag},
 	}
 	discv4RequestRecordCommand = cli.Command{
 		Name:      "requestenr",
 		Usage:     "Requests a node record using EIP-868 enrRequest",
 		Action:    discv4RequestRecord,
 		ArgsUsage: "<node>",
+		Flags:     []cli.Flag{nodekeyFlag, nodekeySeedFlag, listenAddrFlag},
 	}
 	discv4ResolveCommand = cli.Command{
 		Name:      "resolve",
 		Usage:     "Finds a node in the DHT",
 		Action:    discv4Resolve,
 		ArgsUsage: "<node>",
-		Flags:     []cli.Flag{bootnodesFlag},
+		Flags:     []cli.Flag{nodekeyFlag, nodekeySeedFlag, bootnodesFlag, listenAddrFlag},
 	}
 	discv4ResolveJSONCommand = cli.Command{
 		Name:      "resolve-json",
@@ -99,6 +111,10 @@ var (
 		Name:  "nodekey",
 		Usage: "Hex-encoded node key",
 	}
+	nodekeySeedFlag = cli.StringFlag{
+		Name:  "seed",
+		Usage: "Sets deterministic nodekey",
+	}
 	nodedbFlag = cli.StringFlag{
 		Name:  "nodedb",
 		Usage: "Nodes database location",
@@ -106,6 +122,7 @@ var (
 	listenAddrFlag = cli.StringFlag{
 		Name:  "addr",
 		Usage: "Listening address",
+		Value: ":0",
 	}
 	crawlTimeoutFlag = cli.DurationFlag{
 		Name:  "timeout",
@@ -129,6 +146,73 @@ func discv4Ping(ctx *cli.Context) error {
 		return fmt.Errorf("node didn't respond: %v", err)
 	}
 	fmt.Printf("node responded to ping (RTT %v).\n", time.Since(start))
+	return nil
+}
+
+func discv4PingIP(ctx *cli.Context) error {
+	var addrs []*net.UDPAddr
+	for _, as := range ctx.Args() {
+		addr, err := net.ResolveUDPAddr("udp", as)
+		if err != nil {
+			fmt.Println("skipping invalid addr", as)
+		}
+		addrs = append(addrs, addr)
+	}
+
+	for _, addr := range addrs {
+		fmt.Printf("%v: sending ping\n", addr)
+		err := rawPing(ctx, addr)
+		if err != nil {
+			fmt.Printf("%v: %v\n", addr, err)
+		}
+	}
+	return nil
+}
+
+func rawPing(ctx *cli.Context, addr *net.UDPAddr) error {
+	laddr := ctx.String(listenAddrFlag.Name)
+	socket, err := net.ListenPacket("udp", laddr)
+	if err != nil {
+		panic(err)
+	}
+	defer socket.Close()
+
+	privkey := makeNodekey(ctx)
+
+	ping := &v4wire.Ping{
+		Version:    4,
+		To:         v4wire.NewEndpoint(addr, 0),
+		Expiration: uint64(time.Now().Unix()) + 20,
+	}
+	packet, _, err := v4wire.Encode(privkey, ping)
+	if err != nil {
+		panic(err)
+	}
+	if _, err = socket.WriteTo(packet, addr); err != nil {
+		return err
+	}
+
+	var buffer = make([]byte, 1280)
+	socket.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		buffer = buffer[:cap(buffer)]
+		n, fromAddr, err := socket.ReadFrom(buffer)
+		if err != nil {
+			return err
+		}
+		buffer = buffer[:n]
+		if fromAddr.String() == addr.String() {
+			break
+		} else {
+			fmt.Printf("got response from different IP %v", fromAddr)
+		}
+	}
+	resp, pubkey, _, err := v4wire.Decode(buffer)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v: is enode://%x@%v\n", addr, pubkey[:], addr)
+	fmt.Printf("%v: %s %+v\n", addr, resp.Name(), resp)
 	return nil
 }
 
@@ -226,18 +310,33 @@ func startV4(ctx *cli.Context) *discover.UDPv4 {
 	return disc
 }
 
-func makeDiscoveryConfig(ctx *cli.Context) (*enode.LocalNode, discover.Config) {
-	var cfg discover.Config
-
-	if ctx.IsSet(nodekeyFlag.Name) {
+func makeNodekey(ctx *cli.Context) *ecdsa.PrivateKey {
+	switch {
+	case ctx.IsSet(nodekeyFlag.Name):
 		key, err := crypto.HexToECDSA(ctx.String(nodekeyFlag.Name))
 		if err != nil {
 			exit(fmt.Errorf("-%s: %v", nodekeyFlag.Name, err))
 		}
-		cfg.PrivateKey = key
-	} else {
-		cfg.PrivateKey, _ = crypto.GenerateKey()
+		return key
+	case ctx.IsSet(nodekeySeedFlag.Name):
+		keydata := crypto.Keccak256([]byte(ctx.String(nodekeySeedFlag.Name)))
+		key, err := crypto.ToECDSA(keydata)
+		if err != nil {
+			exit(fmt.Errorf("-%s: %v", nodekeySeedFlag.Name, err))
+		}
+		return key
+	default:
+		key, err := crypto.GenerateKey()
+		if err != nil {
+			exit(err)
+		}
+		return key
 	}
+}
+
+func makeDiscoveryConfig(ctx *cli.Context) (*enode.LocalNode, discover.Config) {
+	var cfg discover.Config
+	cfg.PrivateKey = makeNodekey(ctx)
 
 	if commandHasFlag(ctx, bootnodesFlag) {
 		bn, err := parseBootnodes(ctx)
