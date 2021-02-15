@@ -45,7 +45,9 @@ func init() {
 	// Set up the CLI app.
 	app.Flags = append(app.Flags, debug.Flags...)
 	app.Before = func(ctx *cli.Context) error {
-		return debug.Setup(ctx)
+		err := debug.Setup(ctx)
+		debug.SetVmodule("p2p/discover=5")
+		return err
 	}
 	app.After = func(ctx *cli.Context) error {
 		debug.Exit()
