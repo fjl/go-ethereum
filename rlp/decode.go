@@ -43,6 +43,7 @@ var (
 	ErrElemTooLarge     = errors.New("rlp: element is larger than containing list")
 	ErrValueTooLarge    = errors.New("rlp: value size exceeds available input length")
 	ErrMoreThanOneValue = errors.New("rlp: input contains more than one value")
+	ErrDepthLimit       = errors.New("rlp: decoder depth limit reached")
 
 	// internal errors
 	errNotInList     = errors.New("rlp: call of ListEnd outside of any list")
@@ -55,6 +56,9 @@ var (
 		New: func() interface{} { return new(Stream) },
 	}
 )
+
+// This defines the maximum list depth of the decoder.
+const streamDepthLimit = 65536
 
 // Decoder is implemented by types that require custom RLP decoding rules or need to decode
 // into private fields.
@@ -715,6 +719,9 @@ func (s *Stream) List() (size uint64, err error) {
 	}
 	if kind != List {
 		return 0, ErrExpectedList
+	}
+	if len(s.stack) >= streamDepthLimit {
+		return 0, ErrDepthLimit
 	}
 	s.stack = append(s.stack, listpos{0, size})
 	s.kind = -1
