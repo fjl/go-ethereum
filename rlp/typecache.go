@@ -60,7 +60,7 @@ type typekey struct {
 
 type decoder func(*Stream, reflect.Value) error
 
-type writer func(reflect.Value, *encbuf) error
+type writer func(vref, *encbuf) error
 
 var theTC = newTypeCache()
 
@@ -138,7 +138,9 @@ func (c *typeCache) infoWhileGenerating(typ reflect.Type, tags tags) *typeinfo {
 
 type field struct {
 	index    int
+	offset   uintptr
 	info     *typeinfo
+	typ      reflect.Type
 	optional bool
 }
 
@@ -166,7 +168,7 @@ func structFields(typ reflect.Type) (fields []field, err error) {
 				return nil, fmt.Errorf(`rlp: struct field %v.%s needs "optional" tag`, typ, f.Name)
 			}
 			info := theTC.infoWhileGenerating(f.Type, tags)
-			fields = append(fields, field{i, info, tags.optional})
+			fields = append(fields, field{i, f.Offset, info, f.Type, tags.optional})
 		}
 	}
 	return fields, nil

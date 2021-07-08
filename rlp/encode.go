@@ -59,6 +59,7 @@ func Encode(w io.Writer, val interface{}) error {
 	eb := encbufPool.Get().(*encbuf)
 	defer encbufPool.Put(eb)
 	eb.reset()
+
 	if err := eb.encode(val); err != nil {
 		return err
 	}
@@ -71,6 +72,7 @@ func EncodeToBytes(val interface{}) ([]byte, error) {
 	eb := encbufPool.Get().(*encbuf)
 	defer encbufPool.Put(eb)
 	eb.reset()
+
 	if err := eb.encode(val); err != nil {
 		return nil, err
 	}
@@ -85,6 +87,7 @@ func EncodeToBytes(val interface{}) ([]byte, error) {
 func EncodeToReader(val interface{}) (size int, r io.Reader, err error) {
 	eb := encbufPool.Get().(*encbuf)
 	eb.reset()
+
 	if err := eb.encode(val); err != nil {
 		return 0, nil, err
 	}
@@ -127,6 +130,7 @@ type encbuf struct {
 	str     []byte     // string data, contains everything except list headers
 	lheads  []listhead // all list headers
 	lhsize  int        // sum of sizes of all encoded list headers
+	tmp     vref       // see comment in encode
 	sizebuf [9]byte    // auxiliary buffer for uint encoding
 }
 
@@ -148,12 +152,19 @@ func (w *encbuf) Write(b []byte) (int, error) {
 }
 
 func (w *encbuf) encode(val interface{}) error {
-	rval := reflect.ValueOf(val)
-	writer, err := cachedWriter(rval.Type())
+	// In certain cases, makevref needs storage for an additional
+	// pointer. Since this may be invoked recursively, load the
+	// current tmp pointer here and restore it when the writer is
+	// done.
+	prevtmp := w.tmp
+	defer func() { w.tmp = prevtmp }()
+
+	ref, typ := makevref(&w.tmp, val)
+	writer, err := cachedWriter(typ)
 	if err != nil {
 		return err
 	}
-	return writer(rval, w)
+	return writer(ref, w)
 }
 
 func (w *encbuf) encodeStringHeader(size int) {
@@ -337,7 +348,7 @@ func makeWriter(typ reflect.Type, ts tags) (writer, error) {
 	case reflect.PtrTo(typ).Implements(encoderInterface):
 		return makeEncoderWriter(typ), nil
 	case isUint(kind):
-		return writeUint, nil
+		return makeUintWriter(typ), nil
 	case kind == reflect.Bool:
 		return writeBool, nil
 	case kind == reflect.String:
@@ -351,24 +362,27 @@ func makeWriter(typ reflect.Type, ts tags) (writer, error) {
 	case kind == reflect.Struct:
 		return makeStructWriter(typ)
 	case kind == reflect.Interface:
-		return writeInterface, nil
+		return makeInterfaceWriter(typ), nil
 	default:
 		return nil, fmt.Errorf("rlp: type %v is not RLP-serializable", typ)
 	}
 }
 
-func writeRawValue(val reflect.Value, w *encbuf) error {
-	w.str = append(w.str, val.Bytes()...)
+func writeRawValue(val vref, w *encbuf) error {
+	w.str = append(w.str, val.byteSlice()...)
 	return nil
 }
 
-func writeUint(val reflect.Value, w *encbuf) error {
-	w.encodeUint(val.Uint())
-	return nil
+func makeUintWriter(typ reflect.Type) writer {
+	kind := typ.Kind()
+	return func(val vref, w *encbuf) error {
+		w.encodeUint(val.uint64(kind))
+		return nil
+	}
 }
 
-func writeBool(val reflect.Value, w *encbuf) error {
-	if val.Bool() {
+func writeBool(val vref, w *encbuf) error {
+	if val.bool() {
 		w.str = append(w.str, 0x01)
 	} else {
 		w.str = append(w.str, 0x80)
@@ -376,18 +390,16 @@ func writeBool(val reflect.Value, w *encbuf) error {
 	return nil
 }
 
-func writeBigIntPtr(val reflect.Value, w *encbuf) error {
-	ptr := val.Interface().(*big.Int)
-	if ptr == nil {
+func writeBigIntPtr(val vref, w *encbuf) error {
+	if val.ptrIsNil() {
 		w.str = append(w.str, 0x80)
 		return nil
 	}
-	return writeBigInt(ptr, w)
+	return writeBigInt(val.ptrElem().bigInt(), w)
 }
 
-func writeBigIntNoPtr(val reflect.Value, w *encbuf) error {
-	i := val.Interface().(big.Int)
-	return writeBigInt(&i, w)
+func writeBigIntNoPtr(val vref, w *encbuf) error {
+	return writeBigInt(val.bigInt(), w)
 }
 
 // wordBytes is the number of bytes in a big.Word
@@ -420,8 +432,8 @@ func writeBigInt(i *big.Int, w *encbuf) error {
 	return nil
 }
 
-func writeBytes(val reflect.Value, w *encbuf) error {
-	w.encodeString(val.Bytes())
+func writeBytes(val vref, w *encbuf) error {
+	w.encodeString(val.byteSlice())
 	return nil
 }
 
@@ -433,15 +445,8 @@ func makeByteArrayWriter(typ reflect.Type) writer {
 		return writeLengthOneByteArray
 	default:
 		length := typ.Len()
-		return func(val reflect.Value, w *encbuf) error {
-			if !val.CanAddr() {
-				// Getting the byte slice of val requires it to be addressable. Make it
-				// addressable by copying.
-				copy := reflect.New(val.Type()).Elem()
-				copy.Set(val)
-				val = copy
-			}
-			slice := byteArrayBytes(val, length)
+		return func(val vref, w *encbuf) error {
+			slice := val.byteArrayBytes(length)
 			w.encodeStringHeader(len(slice))
 			w.str = append(w.str, slice...)
 			return nil
@@ -449,13 +454,13 @@ func makeByteArrayWriter(typ reflect.Type) writer {
 	}
 }
 
-func writeLengthZeroByteArray(val reflect.Value, w *encbuf) error {
+func writeLengthZeroByteArray(val vref, w *encbuf) error {
 	w.str = append(w.str, 0x80)
 	return nil
 }
 
-func writeLengthOneByteArray(val reflect.Value, w *encbuf) error {
-	b := byte(val.Index(0).Uint())
+func writeLengthOneByteArray(val vref, w *encbuf) error {
+	b := byte(val.uint64(reflect.Uint8))
 	if b <= 0x7f {
 		w.str = append(w.str, b)
 	} else {
@@ -464,8 +469,8 @@ func writeLengthOneByteArray(val reflect.Value, w *encbuf) error {
 	return nil
 }
 
-func writeString(val reflect.Value, w *encbuf) error {
-	s := val.String()
+func writeString(val vref, w *encbuf) error {
+	s := val.string()
 	if len(s) == 1 && s[0] <= 0x7f {
 		// fits single byte, no string header
 		w.str = append(w.str, s[0])
@@ -476,52 +481,70 @@ func writeString(val reflect.Value, w *encbuf) error {
 	return nil
 }
 
-func writeInterface(val reflect.Value, w *encbuf) error {
-	if val.IsNil() {
-		// Write empty list. This is consistent with the previous RLP
-		// encoder that we had and should therefore avoid any
-		// problems.
-		w.str = append(w.str, 0xC0)
-		return nil
+func makeInterfaceWriter(typ reflect.Type) writer {
+	return func(val vref, w *encbuf) error {
+		iv := val.iface(typ)
+		if iv == nil {
+			// Write empty list. This is consistent with the previous RLP
+			// encoder that we had and should therefore avoid any
+			// problems.
+			w.str = append(w.str, 0xC0)
+			return nil
+		}
+		return w.encode(iv)
 	}
-	eval := val.Elem()
-	writer, err := cachedWriter(eval.Type())
-	if err != nil {
-		return err
-	}
-	return writer(eval, w)
 }
 
 func makeSliceWriter(typ reflect.Type, ts tags) (writer, error) {
-	etypeinfo := theTC.infoWhileGenerating(typ.Elem(), tags{})
+	etype := typ.Elem()
+	esize := etype.Size()
+	etypeinfo := theTC.infoWhileGenerating(etype, tags{})
 	if etypeinfo.writerErr != nil {
 		return nil, etypeinfo.writerErr
 	}
 
 	var wfn writer
-	if ts.tail {
+	switch {
+	case ts.tail:
 		// This is for struct tail slices.
 		// w.list is not called for them.
-		wfn = func(val reflect.Value, w *encbuf) error {
-			vlen := val.Len()
+		wfn = func(val vref, w *encbuf) error {
+			vlen := val.sliceLen()
 			for i := 0; i < vlen; i++ {
-				if err := etypeinfo.writer(val.Index(i), w); err != nil {
+				if err := etypeinfo.writer(val.sliceElem(esize, i), w); err != nil {
 					return err
 				}
 			}
 			return nil
 		}
-	} else {
-		// This is for regular slices and arrays.
-		wfn = func(val reflect.Value, w *encbuf) error {
-			vlen := val.Len()
+	case typ.Kind() == reflect.Array:
+		// This is for arrays.
+		vlen := typ.Len()
+		wfn = func(val vref, w *encbuf) error {
 			if vlen == 0 {
 				w.str = append(w.str, 0xC0)
 				return nil
 			}
 			listOffset := w.list()
 			for i := 0; i < vlen; i++ {
-				if err := etypeinfo.writer(val.Index(i), w); err != nil {
+				if err := etypeinfo.writer(val.arrayElem(esize, i), w); err != nil {
+					return err
+				}
+			}
+			w.listEnd(listOffset)
+			return nil
+		}
+	default:
+		// This is for regular slices.
+		wfn = func(val vref, w *encbuf) error {
+			vlen := val.sliceLen()
+			if vlen == 0 {
+				w.str = append(w.str, 0xC0)
+				return nil
+			}
+			listOffset := w.list()
+			for i := 0; i < vlen; i++ {
+				if err := etypeinfo.writer(val.sliceElem(esize, i), w); err != nil {
 					return err
 				}
 			}
@@ -547,10 +570,10 @@ func makeStructWriter(typ reflect.Type) (writer, error) {
 	firstOptionalField := firstOptionalField(fields)
 	if firstOptionalField == len(fields) {
 		// This is the writer function for structs without any optional fields.
-		writer = func(val reflect.Value, w *encbuf) error {
+		writer = func(val vref, w *encbuf) error {
 			lh := w.list()
 			for _, f := range fields {
-				if err := f.info.writer(val.Field(f.index), w); err != nil {
+				if err := f.info.writer(val.structField(&f), w); err != nil {
 					return err
 				}
 			}
@@ -560,16 +583,17 @@ func makeStructWriter(typ reflect.Type) (writer, error) {
 	} else {
 		// If there are any "optional" fields, the writer needs to perform additional
 		// checks to determine the output list length.
-		writer = func(val reflect.Value, w *encbuf) error {
+		writer = func(val vref, w *encbuf) error {
 			lastField := len(fields) - 1
 			for ; lastField >= firstOptionalField; lastField-- {
-				if !val.Field(fields[lastField].index).IsZero() {
+				f := &fields[lastField]
+				if !val.structField(f).isZero(f.typ) {
 					break
 				}
 			}
 			lh := w.list()
 			for i := 0; i <= lastField; i++ {
-				if err := fields[i].info.writer(val.Field(fields[i].index), w); err != nil {
+				if err := fields[i].info.writer(val.structField(&fields[i]), w); err != nil {
 					return err
 				}
 			}
@@ -606,30 +630,24 @@ func makePtrWriter(typ reflect.Type, ts tags) (writer, error) {
 	}
 	nilEncoding := nilEncoding(typ, ts)
 
-	writer := func(val reflect.Value, w *encbuf) error {
-		if ev := val.Elem(); ev.IsValid() {
-			return etypeinfo.writer(ev, w)
+	writer := func(val vref, w *encbuf) error {
+		if val.ptrIsNil() {
+			w.str = append(w.str, nilEncoding)
+			return nil
 		}
-		w.str = append(w.str, nilEncoding)
-		return nil
+		return etypeinfo.writer(val.ptrElem(), w)
 	}
 	return writer, nil
 }
 
 func makeEncoderWriter(typ reflect.Type) writer {
 	if typ.Implements(encoderInterface) {
-		return func(val reflect.Value, w *encbuf) error {
-			return val.Interface().(Encoder).EncodeRLP(w)
+		return func(val vref, w *encbuf) error {
+			return val.ifaceValue(typ).Elem().Interface().(Encoder).EncodeRLP(w)
 		}
 	}
-	w := func(val reflect.Value, w *encbuf) error {
-		if !val.CanAddr() {
-			// package json simply doesn't call MarshalJSON for this case, but encodes the
-			// value as if it didn't implement the interface. We don't want to handle it that
-			// way.
-			return fmt.Errorf("rlp: unadressable value of type %v, EncodeRLP is pointer method", val.Type())
-		}
-		return val.Addr().Interface().(Encoder).EncodeRLP(w)
+	w := func(val vref, w *encbuf) error {
+		return val.ifaceValue(typ).Interface().(Encoder).EncodeRLP(w)
 	}
 	return w
 }

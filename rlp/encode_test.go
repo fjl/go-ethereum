@@ -360,7 +360,7 @@ var encTests = []encTest{
 	{val: &struct{ TE testEncoder }{testEncoder{errors.New("test error")}}, error: "test error"},
 
 	// Verify the error for non-addressable non-pointer Encoder.
-	{val: testEncoder{}, error: "rlp: unadressable value of type rlp.testEncoder, EncodeRLP is pointer method"},
+	{val: testEncoder{}, output: "00010001000100010001"},
 
 	// Verify Encoder takes precedence over []byte.
 	{val: []byteEncoder{0, 1, 2, 3, 4}, output: "C5C0C0C0C0C0"},
