@@ -113,18 +113,6 @@ type (
 		Message []byte
 	}
 
-	// REQUESTTICKET requests a ticket for a topic queue.
-	RequestTicket struct {
-		ReqID []byte
-		Topic []byte
-	}
-
-	// TICKET is the response to REQUESTTICKET.
-	Ticket struct {
-		ReqID  []byte
-		Ticket []byte
-	}
-
 	// REGTOPIC registers the sender in a topic queue using a ticket.
 	Regtopic struct {
 		ReqID  []byte
@@ -134,8 +122,9 @@ type (
 
 	// REGCONFIRMATION is the reply to REGTOPIC.
 	Regconfirmation struct {
-		ReqID      []byte
-		Registered bool
+		ReqID    []byte
+		Ticket   []byte // registered successfully if length zero
+		WaitTime uint
 	}
 
 	// TOPICQUERY asks for nodes with the given topic.
@@ -161,10 +150,6 @@ func DecodeMessage(ptype byte, body []byte) (Packet, error) {
 		dec = new(TalkRequest)
 	case TalkResponseMsg:
 		dec = new(TalkResponse)
-	case RequestTicketMsg:
-		dec = new(RequestTicket)
-	case TicketMsg:
-		dec = new(Ticket)
 	case RegtopicMsg:
 		dec = new(Regtopic)
 	case RegconfirmationMsg:
@@ -223,20 +208,10 @@ func (*TalkResponse) Kind() byte               { return TalkResponseMsg }
 func (p *TalkResponse) RequestID() []byte      { return p.ReqID }
 func (p *TalkResponse) SetRequestID(id []byte) { p.ReqID = id }
 
-func (*RequestTicket) Name() string             { return "REQTICKET/v5" }
-func (*RequestTicket) Kind() byte               { return RequestTicketMsg }
-func (p *RequestTicket) RequestID() []byte      { return p.ReqID }
-func (p *RequestTicket) SetRequestID(id []byte) { p.ReqID = id }
-
 func (*Regtopic) Name() string             { return "REGTOPIC/v5" }
 func (*Regtopic) Kind() byte               { return RegtopicMsg }
 func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
-
-func (*Ticket) Name() string             { return "TICKET/v5" }
-func (*Ticket) Kind() byte               { return TicketMsg }
-func (p *Ticket) RequestID() []byte      { return p.ReqID }
-func (p *Ticket) SetRequestID(id []byte) { p.ReqID = id }
 
 func (*Regconfirmation) Name() string             { return "REGCONFIRMATION/v5" }
 func (*Regconfirmation) Kind() byte               { return RegconfirmationMsg }
