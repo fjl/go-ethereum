@@ -714,9 +714,11 @@ func (t *UDPv5) handle(p v5wire.Packet, fromID enode.ID, fromAddr *net.UDPAddr) 
 	case *v5wire.Nodes:
 		t.handleCallResponse(fromID, fromAddr, p)
 	case *v5wire.TalkRequest:
-		t.handleTalkRequest(p, fromID, fromAddr)
+		t.handleTalkRequest(fromID, fromAddr, p)
 	case *v5wire.TalkResponse:
 		t.handleCallResponse(fromID, fromAddr, p)
+	case *v5wire.Regtopic:
+		t.handleRegtopic(fromID, fromAddr, p)
 	}
 }
 
@@ -847,7 +849,7 @@ func packNodes(reqid []byte, nodes []*enode.Node) []*v5wire.Nodes {
 }
 
 // handleTalkRequest runs the talk request handler of the requested protocol.
-func (t *UDPv5) handleTalkRequest(p *v5wire.TalkRequest, fromID enode.ID, fromAddr *net.UDPAddr) {
+func (t *UDPv5) handleTalkRequest(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TalkRequest) {
 	t.trlock.Lock()
 	handler := t.trhandlers[p.Protocol]
 	t.trlock.Unlock()
@@ -858,4 +860,51 @@ func (t *UDPv5) handleTalkRequest(p *v5wire.TalkRequest, fromID enode.ID, fromAd
 	}
 	resp := &v5wire.TalkResponse{ReqID: p.ReqID, Message: response}
 	t.sendResponse(fromID, fromAddr, resp)
+}
+
+func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.Regtopic) {
+	ticket, ok := t.ticketSealer.Unpack(p.Ticket)
+	if !ok {
+		return // invalid ticket
+	}
+
+	// TODO: this is expensive! Could use a cache here.
+	n, err := enode.New(t.validSchemes, p.ENR)
+	if err != nil {
+		t.log.Debug("Invalid node record in REGTOPIC/v5", "id", fromID, "addr", fromAddr, "err", err)
+		return // invalid node
+	}
+	if n.ID() != fromID {
+		t.log.Debug("Node record in REGTOPIC/v5 does not match id", "id", fromID, "addr", fromAddr)
+		return
+	}
+
+	timeSinceLastUsed := t.clock.Now() - ticket.LastUsed
+	waitTime := ticket.TotalWaitTime + timeSinceLastUsed
+
+	var registered bool
+	requiredWaitTime := t.topicTable.WaitTime(n, ticket.Topic)
+	if waitTime <= requiredWaitTime {
+		// Node has sufficient waiting time.
+		// Now it's up to the table to register it.
+		registered = t.topicTable.Add(n, ticket.Topic)
+	}
+
+	resp := &v5wire.Regconfirmation{ReqID: p.ReqID}
+	if !registered {
+		// Credit waiting time and return new ticket.
+		ticket.TotalWaitTime += timeSinceLastUsed
+		ticket.LastUsed = t.clock.Now()
+		resp.Ticket = t.ticketSealer.Pack(ticket)
+
+		if requiredWaitTime < waitTime {
+			// The node has waited a lot, but can't be added for some reason (e.g. IP
+			// limit), tell it to come back after the min wait time. We could say
+			// zero here but then faulty implementations would spam a lot.
+			resp.WaitTime = topicindex.MinWaitTime
+		} else {
+			resp.WaitTime = requiredWaitTime - waitTime
+		}
+	}
+	t.sendResponse(fromID, fromAddr, &resp)
 }
