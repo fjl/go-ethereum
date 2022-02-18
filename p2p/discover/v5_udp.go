@@ -31,6 +31,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
@@ -75,6 +76,10 @@ type UDPv5 struct {
 	// talkreq handler registry
 	trlock     sync.Mutex
 	trhandlers map[string]TalkRequestHandler
+
+	// topic stuff
+	topicTable   *topicindex.TopicTable
+	ticketSealer *topicindex.TicketSealer
 
 	// channels into dispatch
 	packetInCh    chan ReadPacket
@@ -138,6 +143,12 @@ func ListenV5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	cfg = cfg.withDefaults()
+
+	topicConfig := topicindex.Config{
+		Log:   cfg.Log,
+		Clock: cfg.Clock,
+	}
+
 	t := &UDPv5{
 		// static fields
 		conn:         conn,
@@ -149,6 +160,9 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		validSchemes: cfg.ValidSchemes,
 		clock:        cfg.Clock,
 		trhandlers:   make(map[string]TalkRequestHandler),
+		// topic stuff
+		topicTable:   topicindex.NewTopicTable(ln.ID(), config),
+		ticketSealer: topicindex.NewTicketSealer(cfg.Clock),
 		// channels into dispatch
 		packetInCh:    make(chan ReadPacket, 1),
 		readNextCh:    make(chan struct{}, 1),
@@ -860,23 +874,24 @@ func (t *UDPv5) handleTalkRequest(fromID enode.ID, fromAddr *net.UDPAddr, p *v5w
 }
 
 func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.Regtopic) {
-	ticket, ok := t.ticketSealer.Unpack(p.Ticket)
-	if !ok {
-		return // invalid ticket
+	ticket, err := t.ticketSealer.Unpack(p.Ticket)
+	if err != nil {
+		t.log.Debug("Invalid ticket in REGTOPIC/v5", "id", fromID, "addr", fromAddr, "err", err)
+		return
 	}
 
 	// TODO: this is expensive! Could use a cache here.
 	n, err := enode.New(t.validSchemes, p.ENR)
 	if err != nil {
-		t.log.Debug("Invalid node record in REGTOPIC/v5", "id", fromID, "addr", fromAddr, "err", err)
-		return // invalid node
+		t.log.Debug("Node record in REGTOPIC/v5 is invalid", "id", fromID, "addr", fromAddr, "err", err)
+		return
 	}
 	if n.ID() != fromID {
 		t.log.Debug("Node record in REGTOPIC/v5 does not match id", "id", fromID, "addr", fromAddr)
 		return
 	}
 
-	timeSinceLastUsed := t.clock.Now() - ticket.LastUsed
+	timeSinceLastUsed := t.clock.Now().Sub(ticket.LastUsed)
 	waitTime := ticket.TotalWaitTime + timeSinceLastUsed
 
 	var registered bool
@@ -898,10 +913,10 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 			// The node has waited a lot, but can't be added for some reason (e.g. IP
 			// limit), tell it to come back after the min wait time. We could say
 			// zero here but then faulty implementations would spam a lot.
-			resp.WaitTime = topicindex.MinWaitTime
+			resp.WaitTime = uint(topicindex.MinWaitTime / time.Second)
 		} else {
-			resp.WaitTime = requiredWaitTime - waitTime
+			resp.WaitTime = uint((requiredWaitTime - waitTime) / time.Second)
 		}
 	}
-	t.sendResponse(fromID, fromAddr, &resp)
+	t.sendResponse(fromID, fromAddr, resp)
 }
