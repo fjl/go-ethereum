@@ -35,16 +35,24 @@ import (
 var ticketRekeyInterval = 100000
 
 const (
-	ticketKeyLifetime = 6 * time.Hour
-	ticketMacSize     = 32
+	ticketKeyLifetime    = 6 * time.Hour
+	ticketValidityWindow = 5 * time.Second
+	ticketMacSize        = 32
 )
 
 // Ticket defines the content of generated tickets.
 type Ticket struct {
-	KeyID         uint16
-	Topic         TopicID
-	TotalWaitTime time.Duration
-	LastUsed      mclock.AbsTime
+	KeyID          uint16
+	Topic          TopicID
+	WaitTimeTotal  time.Duration
+	WaitTimeIssued time.Duration
+	LastUsed       mclock.AbsTime
+}
+
+func (t Ticket) isValidAt(now mclock.AbsTime) bool {
+	start := t.LastUsed.Add(t.WaitTimeIssued)
+	end := start.Add(ticketValidityWindow)
+	return now >= start && now < end
 }
 
 // TicketSealer can encode/decode tickets.
@@ -74,24 +82,27 @@ func NewTicketSealer(clock mclock.Clock) *TicketSealer {
 }
 
 var (
-	errBadTicketSize = errors.New("encoded ticket has wrong size")
-	errBadTicketMAC  = errors.New("invalid ticket MAC")
-	errNoTicketKey   = errors.New("unknown ticket MAC keyID")
+	errBadTicketSize     = errors.New("encoded ticket has wrong size")
+	errBadTicketMAC      = errors.New("invalid ticket MAC")
+	errNoTicketKey       = errors.New("unknown ticket MAC keyID")
+	errWrongTicketTopic  = errors.New("ticket used with wrong topic")
+	errTicketTimeInvalid = errors.New("ticket used at the wrong time")
 )
 
 // Unpack decrypts, authenticates and deserializes a ticket.
-func (ts *TicketSealer) Unpack(input []byte) (*Ticket, error) {
+func (ts *TicketSealer) Unpack(topic TopicID, input []byte) (*Ticket, error) {
+	// Empty input means the sender has no ticket.
 	if len(input) == 0 {
-		return &Ticket{}, nil // No ticket.
+		return &Ticket{Topic: topic}, nil
 	}
-
+	// If non-empty, the ticket size must match exactly.
 	if len(input) != encTicketFullSize {
 		return nil, errBadTicketSize
 	}
 
 	// Read the ticket data.
-	// Not great that this happens before checking the MAC,
-	// but the KeyID from Ticket is needed to find the right key.
+	// Not great that this happens before checking MAC,
+	// but KeyID from Ticket is needed to find the right key.
 	enc := input[ticketMacSize:]
 	var ticket Ticket
 	r := bytes.NewReader(enc)
@@ -110,13 +121,19 @@ func (ts *TicketSealer) Unpack(input []byte) (*Ticket, error) {
 		if !hmac.Equal(mac, computed) {
 			return nil, errBadTicketMAC
 		}
+		if ticket.Topic != topic {
+			return nil, errWrongTicketTopic
+		}
+		if !ticket.isValidAt(ts.clock.Now()) {
+			return nil, errTicketTimeInvalid
+		}
 		return &ticket, nil
 	}
 	return nil, errNoTicketKey
 }
 
 // Pack encodes a ticket and seals it.
-// Note: this modifies the KeyID of ticket.
+// Note: this modifies KeyID of ticket.
 func (ts *TicketSealer) Pack(ticket *Ticket) []byte {
 	ts.gcKeys()
 	key := ts.getValidKey()

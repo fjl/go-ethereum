@@ -17,12 +17,9 @@
 package topicindex
 
 import (
-	"fmt"
 	mrand "math/rand"
 	"testing"
-	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -34,16 +31,32 @@ var (
 	topic2 = TopicID{8, 8, 8, 8, 8, 8, 8, 8, 8, 8}
 )
 
-func TestTopicTableRegister1(t *testing.T) {
+func TestTopicTableWait(t *testing.T) {
 	cfg := testConfig(t)
 	tab := NewTopicTable(enode.ID{}, cfg)
 
 	n := newNode()
-	ticket := Ticket{Topic: topic1, TotalWaitTime: 1 * time.Second}
-	wt := tab.Register(n, ticket)
-	fmt.Println(wt)
+	wt := tab.Register(n, topic1, 0)
 
-	spew.Dump(tab)
+	t.Log("initial wait time", wt)
+
+	wt2 := tab.Register(n, topic1, wt)
+	if wt2 != 0 {
+		t.Fatal("node not registered after waiting")
+	}
+}
+
+func TestTopicTableRegisterTwice(t *testing.T) {
+	cfg := testConfig(t)
+	tab := NewTopicTable(enode.ID{}, cfg)
+
+	n := newNode()
+	tab.Add(n, topic1)
+
+	wt := tab.Register(n, topic1, 0)
+	if wt != 0 {
+		t.Fatalf("wrong wait time %v for already-registered node", wt)
+	}
 }
 
 func testConfig(t *testing.T) Config {

@@ -915,13 +915,16 @@ func (t *UDPv5) handleTalkRequest(fromID enode.ID, fromAddr *net.UDPAddr, p *v5w
 }
 
 func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.Regtopic) {
-	ticket, err := t.ticketSealer.Unpack(p.Ticket)
+	ticket, err := t.ticketSealer.Unpack(p.Topic, p.Ticket)
 	if err != nil {
 		t.log.Debug("Invalid ticket in REGTOPIC/v5", "id", fromID, "addr", fromAddr, "err", err)
 		return
 	}
 
-	// TODO: this is expensive! Could use a cache here.
+	// TODO: this is expensive! I think we could get around sending ENR here by storing
+	// the latest record in the wire session instead. However, this may cause an issue
+	// when the session was initially established with the registrar as initiator, because
+	// the handshake doesn't transfer the recipient ENR.
 	n, err := enode.New(t.validSchemes, p.ENR)
 	if err != nil {
 		t.log.Debug("Node record in REGTOPIC/v5 is invalid", "id", fromID, "addr", fromAddr, "err", err)
@@ -935,7 +938,7 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 	// Attempt to register.
 	now := t.clock.Now()
 	timeSinceLastUsed := now.Sub(ticket.LastUsed)
-	waitTime := ticket.TotalWaitTime + timeSinceLastUsed
+	waitTime := ticket.WaitTimeTotal + timeSinceLastUsed
 	newTime := t.topicTable.Register(n, ticket.Topic, waitTime)
 
 	resp := &v5wire.Regconfirmation{ReqID: p.ReqID}
@@ -943,8 +946,10 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		// Node was not registered. Credit waiting time and return a new ticket.
 		resp.WaitTime = uint(newTime / time.Second)
 		resp.Ticket = t.ticketSealer.Pack(&topicindex.Ticket{
-			TotalWaitTime: waitTime,
-			LastUsed:      now,
+			Topic:          p.Topic,
+			WaitTimeTotal:  waitTime,
+			WaitTimeIssued: newTime,
+			LastUsed:       now,
 		})
 	}
 	t.sendResponse(fromID, fromAddr, resp)
