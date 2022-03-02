@@ -194,15 +194,15 @@ func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 
 // Register adds node n for topic t if it has waited long enough.
 func (tab *TopicTable) Register(n *enode.Node, t TopicID, waitTime time.Duration) time.Duration {
+	// Reject attempt if node is already registered.
+	if tab.isRegistered(n, t) {
+		return 0
+	}
+
 	// Check if the node has waited enough.
 	requiredTime := tab.WaitTime(n, t)
 	if waitTime < requiredTime {
 		return requiredTime - waitTime
-	}
-
-	// Reject attempt if node is already registered.
-	if tab.isRegistered(n, t) {
-		return 0
 	}
 
 	// Check if there is space. If not, the node needs to come back when a slot opens.
