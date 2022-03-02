@@ -116,6 +116,7 @@ type (
 	// REGTOPIC registers the sender in a topic queue using a ticket.
 	Regtopic struct {
 		ReqID  []byte
+		Topic  [32]byte
 		Ticket []byte
 		ENR    *enr.Record
 	}

@@ -80,6 +80,7 @@ type UDPv5 struct {
 	// topic stuff
 	topicTable   *topicindex.TopicTable
 	ticketSealer *topicindex.TicketSealer
+	topicReg     *topicRegController
 
 	// channels into dispatch
 	packetInCh    chan ReadPacket
@@ -161,7 +162,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		clock:        cfg.Clock,
 		trhandlers:   make(map[string]TalkRequestHandler),
 		// topic stuff
-		topicTable:   topicindex.NewTopicTable(ln.ID(), config),
+		topicTable:   topicindex.NewTopicTable(ln.ID(), topicConfig),
 		ticketSealer: topicindex.NewTicketSealer(cfg.Clock),
 		// channels into dispatch
 		packetInCh:    make(chan ReadPacket, 1),
@@ -178,11 +179,17 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		closeCtx:       closeCtx,
 		cancelCloseCtx: cancelCloseCtx,
 	}
+
+	// Initialize main node table.
 	tab, err := newTable(t, t.db, cfg.Bootnodes, cfg.Log)
 	if err != nil {
 		return nil, err
 	}
 	t.tab = tab
+
+	// Initialize topic registration.
+	t.topicReg = newTopicRegController(t, topicConfig)
+
 	return t, nil
 }
 
@@ -195,6 +202,7 @@ func (t *UDPv5) Self() *enode.Node {
 func (t *UDPv5) Close() {
 	t.closeOnce.Do(func() {
 		t.cancelCloseCtx()
+		t.topicReg.stopAllTopics()
 		t.conn.Close()
 		t.wg.Wait()
 		t.tab.close()
@@ -241,6 +249,16 @@ func (t *UDPv5) AllNodes() []*enode.Node {
 	return nodes
 }
 
+// RegisterTopic adds a topic for registration.
+func (t *UDPv5) RegisterTopic(topic topicindex.TopicID) {
+	t.topicReg.startTopic(topic)
+}
+
+// StopRegisterTopic removes a topic from registration.
+func (t *UDPv5) StopRegisterTopic(topic topicindex.TopicID) {
+	t.topicReg.stopTopic(topic)
+}
+
 // LocalNode returns the current local node running the
 // protocol.
 func (t *UDPv5) LocalNode() *enode.LocalNode {
@@ -250,7 +268,7 @@ func (t *UDPv5) LocalNode() *enode.LocalNode {
 // RegisterTalkHandler adds a handler for 'talk requests'. The handler function is called
 // whenever a request for the given protocol is received and should return the response
 // data or nil.
-func (t *UDPv5) RegisterTalkHandler(protocol string, handler TalkRequestHandler) {
+func (t *UDPv5) RegisterTalkHandler(protocol string, handler TalkRequestHandler) { //
 	t.trlock.Lock()
 	defer t.trlock.Unlock()
 	t.trhandlers[protocol] = handler
@@ -377,6 +395,24 @@ func (t *UDPv5) RequestENR(n *enode.Node) (*enode.Node, error) {
 func (t *UDPv5) findnode(n *enode.Node, distances []uint) ([]*enode.Node, error) {
 	resp := t.call(n, v5wire.NodesMsg, &v5wire.Findnode{Distances: distances})
 	return t.waitForNodes(resp, distances)
+}
+
+// topicRegister sends REGTOPIC to n and waits for a response.
+func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []byte) (*v5wire.Regconfirmation, error) {
+	req := &v5wire.Regtopic{
+		Topic:  topic,
+		Ticket: ticket,
+		ENR:    t.Self().Record(),
+	}
+	resp := t.call(n, v5wire.RegconfirmationMsg, req)
+	defer t.callDone(resp)
+
+	select {
+	case rr := <-resp.ch:
+		return rr.(*v5wire.Regconfirmation), nil
+	case err := <-resp.err:
+		return nil, err
+	}
 }
 
 // waitForNodes waits for NODES responses to the given call.
@@ -733,6 +769,8 @@ func (t *UDPv5) handle(p v5wire.Packet, fromID enode.ID, fromAddr *net.UDPAddr) 
 		t.handleCallResponse(fromID, fromAddr, p)
 	case *v5wire.Regtopic:
 		t.handleRegtopic(fromID, fromAddr, p)
+	case *v5wire.Regconfirmation:
+		t.handleCallResponse(fromID, fromAddr, p)
 	}
 }
 
@@ -894,32 +932,20 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		return
 	}
 
-	timeSinceLastUsed := t.clock.Now().Sub(ticket.LastUsed)
+	// Attempt to register.
+	now := t.clock.Now()
+	timeSinceLastUsed := now.Sub(ticket.LastUsed)
 	waitTime := ticket.TotalWaitTime + timeSinceLastUsed
-
-	var registered bool
-	requiredWaitTime := t.topicTable.WaitTime(n, ticket.Topic)
-	if waitTime <= requiredWaitTime {
-		// Node has sufficient waiting time.
-		// Now it's up to the table to register it.
-		registered = t.topicTable.Add(n, ticket.Topic)
-	}
+	newTime := t.topicTable.Register(n, ticket.Topic, waitTime)
 
 	resp := &v5wire.Regconfirmation{ReqID: p.ReqID}
-	if !registered {
-		// Credit waiting time and return new ticket.
-		ticket.TotalWaitTime += timeSinceLastUsed
-		ticket.LastUsed = t.clock.Now()
-		resp.Ticket = t.ticketSealer.Pack(ticket)
-
-		if requiredWaitTime < waitTime {
-			// The node has waited a lot, but can't be added for some reason (e.g. IP
-			// limit), tell it to come back after the min wait time. We could say
-			// zero here but then faulty implementations would spam a lot.
-			resp.WaitTime = uint(topicindex.MinWaitTime / time.Second)
-		} else {
-			resp.WaitTime = uint((requiredWaitTime - waitTime) / time.Second)
-		}
+	if newTime > 0 {
+		// Node was not registered. Credit waiting time and return a new ticket.
+		resp.WaitTime = uint(newTime / time.Second)
+		resp.Ticket = t.ticketSealer.Pack(&topicindex.Ticket{
+			TotalWaitTime: waitTime,
+			LastUsed:      now,
+		})
 	}
 	t.sendResponse(fromID, fromAddr, resp)
 }
