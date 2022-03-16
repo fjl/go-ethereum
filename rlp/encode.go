@@ -61,7 +61,8 @@ func Encode(w io.Writer, val interface{}) error {
 	}
 
 	buf := getEncBuffer()
-	defer encBufferPool.Put(buf)
+	defer putEncBufferToPool(buf)
+
 	if err := buf.encode(val); err != nil {
 		return err
 	}
@@ -72,7 +73,7 @@ func Encode(w io.Writer, val interface{}) error {
 // Please see package-level documentation for the encoding rules.
 func EncodeToBytes(val interface{}) ([]byte, error) {
 	buf := getEncBuffer()
-	defer encBufferPool.Put(buf)
+	defer putEncBufferToPool(buf)
 
 	if err := buf.encode(val); err != nil {
 		return nil, err
@@ -88,7 +89,7 @@ func EncodeToBytes(val interface{}) ([]byte, error) {
 func EncodeToReader(val interface{}) (size int, r io.Reader, err error) {
 	buf := getEncBuffer()
 	if err := buf.encode(val); err != nil {
-		encBufferPool.Put(buf)
+		putEncBufferToPool(buf)
 		return 0, nil, err
 	}
 	// Note: can't put the reader back into the pool here

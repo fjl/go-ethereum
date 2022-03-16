@@ -5,6 +5,15 @@ import (
 	"math/big"
 	"reflect"
 	"sync"
+
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	encbufferListSizePre  = metrics.GetOrRegisterMeter("rlp/enc/listsize/pre", nil)
+	encbufferListSizePost = metrics.GetOrRegisterMeter("rlp/enc/listsize/post", nil)
+	encbufferStrSizePre   = metrics.GetOrRegisterMeter("rlp/enc/strsize/pre", nil)
+	encbufferStrSizePost  = metrics.GetOrRegisterMeter("rlp/enc/strsize/post", nil)
 )
 
 type encBuffer struct {
@@ -22,7 +31,19 @@ var encBufferPool = sync.Pool{
 func getEncBuffer() *encBuffer {
 	buf := encBufferPool.Get().(*encBuffer)
 	buf.reset()
+	if metrics.Enabled {
+		encbufferListSizePre.Mark(int64(cap(buf.lheads)))
+		encbufferStrSizePre.Mark(int64(cap(buf.str)))
+	}
 	return buf
+}
+
+func putEncBufferToPool(buf *encBuffer) {
+	if metrics.Enabled {
+		encbufferListSizePost.Mark(int64(cap(buf.lheads)))
+		encbufferStrSizePost.Mark(int64(cap(buf.str)))
+	}
+	encBufferPool.Put(buf)
 }
 
 func (buf *encBuffer) reset() {
@@ -205,7 +226,7 @@ func (r *encReader) Read(b []byte) (n int, err error) {
 			// is first encountered. Subsequent calls still return EOF
 			// as the error but the buffer is no longer valid.
 			if r.buf != nil {
-				encBufferPool.Put(r.buf)
+				putEncBufferToPool(r.buf)
 				r.buf = nil
 			}
 			return n, io.EOF
@@ -304,7 +325,7 @@ func (w *EncoderBuffer) Reset(dst io.Writer) {
 
 	// Get a fresh buffer.
 	if w.buf == nil {
-		w.buf = encBufferPool.Get().(*encBuffer)
+		w.buf = getEncBuffer()
 		w.ownBuffer = true
 	}
 	w.buf.reset()
@@ -320,7 +341,7 @@ func (w *EncoderBuffer) Flush() error {
 	}
 	// Release the internal buffer.
 	if w.ownBuffer {
-		encBufferPool.Put(w.buf)
+		putEncBufferToPool(w.buf)
 	}
 	*w = EncoderBuffer{}
 	return err
