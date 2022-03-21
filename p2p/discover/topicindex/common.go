@@ -29,6 +29,9 @@ type Config struct {
 	RegLifetime time.Duration
 	TableLimit  int
 
+	// Registration settings.
+	RegAttemptTimeout time.Duration
+
 	// These settings are exposed for testing purposes.
 	Clock mclock.Clock
 	Log   log.Logger
@@ -40,6 +43,14 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.TableLimit == 0 {
 		cfg.TableLimit = 5000
+	}
+
+	// Note: RegAttemptTimeout == RegLifetime is the most correct choice, since, when
+	// RegLifetime has passed, all ads will have cycled in the remote table. If
+	// registration still hasn't worked after this time, the registrar is overloaded or
+	// malfunctioning and it's better to pick another one.
+	if cfg.RegAttemptTimeout == 0 {
+		cfg.RegAttemptTimeout = cfg.RegLifetime
 	}
 
 	if cfg.Log == nil {

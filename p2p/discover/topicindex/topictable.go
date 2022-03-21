@@ -215,6 +215,11 @@ func (tab *TopicTable) Register(n *enode.Node, t TopicID, waitTime time.Duration
 	return 0
 }
 
+// Note about lower bound removal: Lower bound information only needs to be kept for
+// active registration topic/id/ip, because only active registrations influence the
+// waiting time modifier value. The lower-bound value kept is a tuple of (value,
+// timestamp). After time wt has expired (at timestamp+wt), the tuple can be deleted.
+
 // waitTimeState holds the state of waiting time modifier functions.
 type waitTimeState struct {
 	idCounter map[enode.ID]int
