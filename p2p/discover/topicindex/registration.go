@@ -18,6 +18,7 @@ package topicindex
 
 import (
 	"container/heap"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -35,39 +36,47 @@ type Registration struct {
 	clock   mclock.Clock
 	topic   TopicID
 	buckets [40]regBucket
-	regHeap regHeap
+	heap    regHeap
+
+	timeout time.Duration
 }
 
-type regBucket struct {
-	attempts     map[enode.ID]*RegAttempt
-	replacements map[enode.ID]*enode.Node
-	regCount     int
-}
-
-type RegState int
+// RegAttemptState is the state of a registration attempt on a node.
+type RegAttemptState int
 
 const (
-	Initial RegState = iota
+	Standby RegAttemptState = iota
 	Waiting
-	Active
+	Registered
+
+	nRegStates = int(Registered) + 1
 )
 
+type regBucket struct {
+	att   map[enode.ID]*RegAttempt
+	count [nRegStates]int
+}
+
 type RegAttempt struct {
-	State   RegState
-	NextReq mclock.AbsTime
+	State    RegAttemptState
+	NextTime mclock.AbsTime
 
 	Node          *enode.Node
 	Ticket        []byte
 	TotalWaitTime time.Duration
 
-	index int // index in regHeap
+	index  int // index in regHeap
+	bucket *regBucket
 }
 
 func NewRegistration(topic TopicID, config Config) *Registration {
 	config = config.withDefaults()
-	r := &Registration{clock: config.Clock}
+	r := &Registration{
+		clock:   config.Clock,
+		timeout: config.RegAttemptTimeout,
+	}
 	for i := range r.buckets {
-		r.buckets[i].attempts = make(map[enode.ID]*RegAttempt)
+		r.buckets[i].att = make(map[enode.ID]*RegAttempt)
 	}
 	return r
 }
@@ -79,9 +88,10 @@ func (r *Registration) Topic() TopicID {
 
 // LookupTarget returns a target that should be walked towards.
 func (r *Registration) LookupTarget() enode.ID {
+	// This finds the closest bucket with no registrations.
 	center := enode.ID(r.topic)
 	for i := range r.buckets {
-		if r.buckets[i].regCount == 0 {
+		if r.buckets[i].count[Registered] == 0 {
 			dist := i + 256
 			return idAtDistance(center, dist)
 		}
@@ -112,54 +122,114 @@ func idAtDistance(a enode.ID, n int) (b enode.ID) {
 // AddNodes notifies the registration process about found nodes.
 func (r *Registration) AddNodes(nodes []*enode.Node) {
 	for _, n := range nodes {
-		b := r.bucket(n.ID())
-		if _, ok := b.active[n.ID()]; ok {
-			continue // has registration with this node
-		}
-		if _, ok := b.attempts[n.ID()]; ok {
-			continue // has scheduled attempt with this node
-		}
-		if len(b.attempts) > regBucketMaxNodes {
-			continue // contains enough attempts already
+		id := n.ID()
+		b := r.bucket(id)
+		attempt, ok := b.att[id]
+		if ok {
+			// There is already an attempt scheduled with this node.
+			// Update the record if newer.
+			if attempt.Node.Seq() < n.Seq() {
+				attempt.Node = n
+			}
+			continue
 		}
 
-		attempt := &RegAttempt{Node: n, NextReq: r.clock.Now()}
-		b.attempts[n.ID()] = attempt
-		heap.Push(&r.regHeap, attempt)
+		if b.count[Standby] >= regBucketMaxReplacements {
+			// There are enough replacements already, ignore the node.
+			continue
+		}
+
+		// Create a new attempt.
+		att := &RegAttempt{Node: n, bucket: b}
+		b.att[id] = att
+		b.count[att.State]++
+		r.refillAttempts(att.bucket)
+	}
+}
+
+func (r *Registration) setAttemptState(att *RegAttempt, state RegAttemptState) {
+	att.bucket.count[att.State]--
+	att.bucket.count[state]++
+	att.State = state
+}
+
+func (r *Registration) refillAttempts(b *regBucket) {
+	if b.count[Waiting] >= regBucketMaxAttempts {
+		return
+	}
+
+	// Promote a random replacement.
+	for _, att := range b.att {
+		if att.State == Standby {
+			r.setAttemptState(att, Waiting)
+			att.NextTime = r.clock.Now()
+			heap.Push(&r.heap, att)
+			break
+		}
 	}
 }
 
 // NextRequest returns a registration attempt that should be made.
 // If there is nothing to do, this method returns nil.
 func (r *Registration) NextRequest() *RegAttempt {
-	if len(r.regHeap) == 0 {
-		return nil
+	now := r.clock.Now()
+	for len(r.heap) > 0 {
+		att := r.heap[0]
+		switch att.State {
+		case Standby:
+			panic("standby attempt in Registration.heap")
+		case Registered:
+			if att.NextTime >= now {
+				r.removeAttempt(att)
+			}
+		case Waiting:
+			return att
+		}
 	}
-	return r.regHeap[0]
+	return nil
+}
+
+// StartRequest should be called when a registration request is sent for the attempt.
+func (r *Registration) StartRequest(att *RegAttempt) {
+	if att.State != Waiting {
+		panic(fmt.Errorf("StartRequest for attempt with state=%v", att.State))
+	}
+	heap.Remove(&r.heap, att.index)
+	att.index = -1
 }
 
 // HandleTicketResponse should be called when a node responds to a registration
 // request with a ticket and waiting time.
-func (r *Registration) HandleTicketResponse(n *enode.Node, ticket []byte, waitTime time.Duration) {
-	b := r.bucket(n.ID())
-	attempt := b.attempts[n.ID()]
-	if attempt == nil {
-		return
-	}
-	attempt.Ticket = ticket
-	attempt.Node = n
-	attempt.NextReq = r.clock.Now().Add(waitTime)
-	heap.Fix(&r.regHeap, attempt.index)
+func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
+	att.Ticket = ticket
+	att.NextTime = r.clock.Now().Add(waitTime)
+	heap.Push(&r.heap, att)
 }
 
 // HandleRegistered should be called when a node confirms topic registration.
-func (r *Registration) HandleRegistered(n *enode.Node) {
-	b := r.bucket(n.ID())
-	if attempt := b.attempts[n.ID()]; attempt != nil {
-		delete(b.attempts, n.ID())
-		heap.Remove(&r.regHeap, attempt.index)
+func (r *Registration) HandleRegistered(att *RegAttempt, totalWaitTime time.Duration, ttl time.Duration) {
+	r.setAttemptState(att, Registered)
+	att.NextTime = r.clock.Now().Add(ttl)
+	heap.Push(&r.heap, att)
+	r.refillAttempts(att.bucket)
+}
+
+func (r *Registration) HandleErrorResponse(att *RegAttempt) {
+	r.removeAttempt(att)
+	r.refillAttempts(att.bucket)
+}
+
+func (r *Registration) removeAttempt(att *RegAttempt) {
+	nid := att.Node.ID()
+	if att.bucket.att[nid] != att {
+		panic("trying to delete non-existent attempt")
 	}
-	b.active[n.ID()] = r.clock.Now()
+	if att.index >= 0 {
+		heap.Remove(&r.heap, att.index)
+		att.index = -1
+	}
+	delete(att.bucket.att, nid)
+	att.bucket.count[att.State]--
 }
 
 func (r *Registration) bucket(id enode.ID) *regBucket {
@@ -181,7 +251,7 @@ func (rh regHeap) Len() int {
 }
 
 func (rh regHeap) Less(i, j int) bool {
-	return rh[i].NextReq < rh[j].NextReq
+	return rh[i].NextTime < rh[j].NextTime
 }
 
 func (rh regHeap) Swap(i, j int) {
