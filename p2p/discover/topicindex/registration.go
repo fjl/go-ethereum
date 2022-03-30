@@ -41,6 +41,8 @@ type Registration struct {
 	timeout time.Duration
 }
 
+//go:generate go run golang.org/x/tools/cmd/stringer@latest -type RegAttemptState
+
 // RegAttemptState is the state of a registration attempt on a node.
 type RegAttemptState int
 
