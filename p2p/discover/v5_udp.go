@@ -541,11 +541,24 @@ func (t *UDPv5) callDone(c *callV5) {
 func (t *UDPv5) dispatch() {
 	defer t.wg.Done()
 
+	var (
+		topicExpiryTimer = t.clock.NewTimer(0)
+		nextTopicExp     mclock.AbsTime
+	)
+
 	// Arm first read.
 	t.readNextCh <- struct{}{}
 
 	for {
+		if e := t.topicTable.NextExpiryTime(); e <= nextTopicExp {
+			topicExpiryTimer.Reset(t.clock.Now() - e)
+			nextTopicExp = e
+		}
+
 		select {
+		case <-topicExpiryTimer.C:
+			t.topicTable.Expire()
+
 		case c := <-t.callCh:
 			id := c.node.ID()
 			t.callQueue[id] = append(t.callQueue[id], c)
