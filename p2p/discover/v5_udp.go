@@ -548,12 +548,12 @@ func (t *UDPv5) dispatch() {
 
 	for {
 		if e := t.topicTable.NextExpiryTime(); e <= nextTopicExp {
-			topicExpiryTimer.Reset(t.clock.Now() - e)
+			topicExpiryTimer.Reset(t.clock.Now().Sub(e))
 			nextTopicExp = e
 		}
 
 		select {
-		case <-topicExpiryTimer.C:
+		case <-topicExpiryTimer.C():
 			t.topicTable.Expire()
 
 		case c := <-t.callCh:
