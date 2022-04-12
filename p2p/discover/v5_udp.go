@@ -88,6 +88,7 @@ type UDPv5 struct {
 	callCh        chan *callV5
 	callDoneCh    chan *callV5
 	respTimeoutCh chan *callTimeout
+	onDispatchCh  chan func()
 
 	// state of dispatch
 	codec            codecV5
@@ -170,6 +171,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		callCh:        make(chan *callV5),
 		callDoneCh:    make(chan *callV5),
 		respTimeoutCh: make(chan *callTimeout),
+		onDispatchCh:  make(chan func()),
 		// state of dispatch
 		codec:            v5wire.NewCodec(ln, cfg.PrivateKey, cfg.Clock),
 		activeCallByNode: make(map[enode.ID]*callV5),
@@ -259,8 +261,19 @@ func (t *UDPv5) StopRegisterTopic(topic topicindex.TopicID) {
 	t.topicReg.stopTopic(topic)
 }
 
-// LocalNode returns the current local node running the
-// protocol.
+// LocalTopicNodes returns all locally-registered nodes for a topic.
+func (t *UDPv5) LocalTopicNodes(topic topicindex.TopicID) []*enode.Node {
+	done := make(chan []*enode.Node)
+	fn := func() { done <- t.topicTable.Nodes(topic) }
+	select {
+	case t.onDispatchCh <- fn:
+		return <-done
+	case <-t.closeCtx.Done():
+		return nil
+	}
+}
+
+// LocalNode returns the current local node running the protocol.
 func (t *UDPv5) LocalNode() *enode.LocalNode {
 	return t.localNode
 }
@@ -555,6 +568,9 @@ func (t *UDPv5) dispatch() {
 		select {
 		case <-topicExpiryTimer.C():
 			t.topicTable.Expire()
+
+		case fn := <-t.onDispatchCh:
+			fn()
 
 		case c := <-t.callCh:
 			id := c.node.ID()
