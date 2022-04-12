@@ -110,6 +110,10 @@ var (
 		Name:  "addr",
 		Usage: "Listening address",
 	}
+	httpAddrFlag = &cli.StringFlag{
+		Name:  "rpc",
+		Usage: "HTTP server listening address",
+	}
 	crawlTimeoutFlag = &cli.DurationFlag{
 		Name:  "timeout",
 		Usage: "Time limit for the crawl.",
