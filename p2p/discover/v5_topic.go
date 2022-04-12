@@ -143,14 +143,13 @@ func (reg *topicReg) run(rc *topicRegController) {
 		}
 
 		select {
-		case <-attemptTimer.C:
-
 		// Lookup management.
 		case reg.lookupTarget <- reg.state.LookupTarget():
 		case nodes := <-reg.lookupResults:
 			reg.state.AddNodes(nodes)
 
 		// Registration attempts.
+		case <-attemptTimer.C:
 		case reqCh <- nextAttempt:
 			reg.state.StartRequest(nextAttempt)
 		case resp := <-reg.regResponse:
@@ -193,6 +192,15 @@ func (reg *topicReg) runLookups(rc *topicRegController) {
 			case <-reg.lookupCtx.Done():
 				return
 			}
+		}
+
+		// Wait a bit before starting the next lookup.
+		sleep := time.NewTimer(200 * time.Millisecond)
+		defer sleep.Stop()
+		select {
+		case <-sleep.C:
+		case <-reg.quit:
+			return
 		}
 	}
 }
