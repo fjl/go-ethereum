@@ -18,11 +18,16 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v5test"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/rpc"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -75,6 +80,7 @@ var (
 			nodekeyFlag,
 			nodedbFlag,
 			listenAddrFlag,
+			httpAddrFlag,
 		},
 	}
 )
@@ -131,7 +137,18 @@ func discv5Listen(ctx *cli.Context) error {
 	defer disc.Close()
 
 	fmt.Println(disc.Self())
-	select {}
+
+	httpAddr := ctx.String(httpAddrFlag.Name)
+	if httpAddr == "" {
+		select {}
+		return nil
+	}
+
+	log.Info("Starting RPC API server", "addr", httpAddr)
+	srv := rpc.NewServer()
+	srv.RegisterName("disc", &discAPI{disc})
+	httpsrv := http.Server{Addr: httpAddr, Handler: srv}
+	return httpsrv.ListenAndServe()
 }
 
 // startV5 starts an ephemeral discovery v5 node.
@@ -143,4 +160,34 @@ func startV5(ctx *cli.Context) *discover.UDPv5 {
 		exit(err)
 	}
 	return disc
+}
+
+// ---------------------------
+// JSON tester
+
+func discv5API(ctx *cli.Context) {
+}
+
+type discAPI struct {
+	host *discover.UDPv5
+}
+
+func (api *discAPI) Register(topic common.Hash) {
+	api.host.RegisterTopic(topicindex.TopicID(topic))
+}
+
+func (api *discAPI) UnregisterTopic(topic common.Hash) {
+	api.host.StopRegisterTopic(topicindex.TopicID(topic))
+}
+
+func (api *discAPI) NodeTable(target common.Hash) []*enode.Node {
+	return api.host.AllNodes()
+}
+
+func (api *discAPI) TopicNodes(topic common.Hash) []*enode.Node {
+	return api.host.LocalTopicNodes(topicindex.TopicID(topic))
+}
+
+func (api *discAPI) LocalNode() *enode.Node {
+	return api.host.Self()
 }
