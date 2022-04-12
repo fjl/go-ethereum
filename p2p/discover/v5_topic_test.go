@@ -17,27 +17,23 @@
 package discover
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 func TestTopicReg(t *testing.T) {
 	bootnode := startLocalhostV5(t, Config{})
-
 	client := startLocalhostV5(t, Config{
 		Bootnodes: []*enode.Node{bootnode.Self()},
 	})
-	client.RegisterTopic(topicindex.TopicID{})
 
-	time.Sleep(8 * time.Second)
-	spew.Dump(client.topicReg.reg)
-	fmt.Println("-----")
-	spew.Dump(bootnode.topicTable)
-	fmt.Println("-----")
-	select {}
+	client.RegisterTopic(topicindex.TopicID{})
+	time.Sleep(10 * time.Second)
+	reg := bootnode.LocalTopicNodes(topicindex.TopicID{})
+	if len(reg) != 1 || reg[0].ID() != client.localNode.ID() {
+		t.Fatal("not registered")
+	}
 }
