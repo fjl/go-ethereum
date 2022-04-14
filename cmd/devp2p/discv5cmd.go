@@ -180,7 +180,7 @@ func (api *discAPI) UnregisterTopic(topic common.Hash) {
 	api.host.StopRegisterTopic(topicindex.TopicID(topic))
 }
 
-func (api *discAPI) NodeTable(target common.Hash) []*enode.Node {
+func (api *discAPI) NodeTable() []*enode.Node {
 	return api.host.AllNodes()
 }
 
