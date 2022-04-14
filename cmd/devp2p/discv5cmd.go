@@ -146,7 +146,7 @@ func discv5Listen(ctx *cli.Context) error {
 
 	log.Info("Starting RPC API server", "addr", httpAddr)
 	srv := rpc.NewServer()
-	srv.RegisterName("disc", &discAPI{disc})
+	srv.RegisterName("discv5", &discAPI{disc})
 	httpsrv := http.Server{Addr: httpAddr, Handler: srv}
 	return httpsrv.ListenAndServe()
 }
@@ -172,7 +172,7 @@ type discAPI struct {
 	host *discover.UDPv5
 }
 
-func (api *discAPI) Register(topic common.Hash) {
+func (api *discAPI) RegisterTopic(topic common.Hash) {
 	api.host.RegisterTopic(topicindex.TopicID(topic))
 }
 
