@@ -17,6 +17,7 @@
 package topicindex
 
 import (
+	"encoding/hex"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -64,5 +65,9 @@ func (cfg Config) withDefaults() Config {
 
 // TopicID represents a topic.
 type TopicID [32]byte
+
+func (t TopicID) TerminalString() string {
+	return hex.EncodeToString(t[:8])
+}
 
 const Never = ^mclock.AbsTime(0)

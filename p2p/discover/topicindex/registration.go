@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -34,6 +35,7 @@ const (
 // Registration is the state associated with registering in a single topic.
 type Registration struct {
 	clock   mclock.Clock
+	log     log.Logger
 	topic   TopicID
 	buckets [40]regBucket
 	heap    regHeap
@@ -75,6 +77,7 @@ func NewRegistration(topic TopicID, config Config) *Registration {
 	config = config.withDefaults()
 	r := &Registration{
 		clock:   config.Clock,
+		log:     config.Log.New("topic", topic),
 		timeout: config.RegAttemptTimeout,
 	}
 	for i := range r.buckets {
@@ -152,6 +155,7 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 func (r *Registration) setAttemptState(att *RegAttempt, state RegAttemptState) {
 	att.bucket.count[att.State]--
 	att.bucket.count[state]++
+	r.log.Trace("Registration attempt state changed", "id", att.Node.ID(), "state", state, "prev", att.State)
 	att.State = state
 }
 
@@ -171,17 +175,18 @@ func (r *Registration) refillAttempts(b *regBucket) {
 	}
 }
 
-// NextRequest returns a registration attempt that should be made.
+// NextRequest returns a registration attempt.
 // If there is nothing to do, this method returns nil.
 func (r *Registration) NextRequest() *RegAttempt {
 	now := r.clock.Now()
+
 	for len(r.heap) > 0 {
 		att := r.heap[0]
 		switch att.State {
 		case Standby:
 			panic("standby attempt in Registration.heap")
 		case Registered:
-			if att.NextTime >= now {
+			if att.NextTime <= now {
 				r.removeAttempt(att)
 			}
 		case Waiting:
@@ -210,13 +215,15 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 
 // HandleRegistered should be called when a node confirms topic registration.
 func (r *Registration) HandleRegistered(att *RegAttempt, totalWaitTime time.Duration, ttl time.Duration) {
+	r.log.Trace("Topic registration successful", "id", att.Node.ID())
 	r.setAttemptState(att, Registered)
 	att.NextTime = r.clock.Now().Add(ttl)
 	heap.Push(&r.heap, att)
 	r.refillAttempts(att.bucket)
 }
 
-func (r *Registration) HandleErrorResponse(att *RegAttempt) {
+func (r *Registration) HandleErrorResponse(att *RegAttempt, err error) {
+	r.log.Debug("Topic registration failed", "id", att.Node.ID(), "err", err)
 	r.removeAttempt(att)
 	r.refillAttempts(att.bucket)
 }
@@ -226,6 +233,7 @@ func (r *Registration) removeAttempt(att *RegAttempt) {
 	if att.bucket.att[nid] != att {
 		panic("trying to delete non-existent attempt")
 	}
+	r.log.Trace("Removing registration attempt", "id", att.Node.ID(), "state", att.State)
 	if att.index >= 0 {
 		heap.Remove(&r.heap, att.index)
 		att.index = -1

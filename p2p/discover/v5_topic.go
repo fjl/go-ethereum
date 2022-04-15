@@ -133,12 +133,12 @@ func (reg *topicReg) run(rc *topicRegController) {
 		)
 		if nextAttempt != nil {
 			now := reg.clock.Now()
-			if nextAttempt.NextTime >= now {
+			if nextAttempt.NextTime <= now {
 				// Request is due immediately.
 				reqCh = reg.regRequest
 			} else {
 				// Wake up the loop when the next attempt is due.
-				attemptTimer.Reset(now.Sub(nextAttempt.NextTime))
+				attemptTimer.Reset(nextAttempt.NextTime.Sub(now))
 			}
 		}
 
@@ -152,11 +152,10 @@ func (reg *topicReg) run(rc *topicRegController) {
 		case <-attemptTimer.C:
 		case reqCh <- nextAttempt:
 			reg.state.StartRequest(nextAttempt)
+
 		case resp := <-reg.regResponse:
-			n := resp.att.Node
 			if resp.err != nil {
-				rc.transport.log.Debug("Topic registration failed", "topic", reg.state.Topic(), "id", n.ID(), "err", resp.err)
-				reg.state.HandleErrorResponse(resp.att)
+				reg.state.HandleErrorResponse(resp.att, resp.err)
 				continue
 			}
 			msg := resp.msg
@@ -165,7 +164,6 @@ func (reg *topicReg) run(rc *topicRegController) {
 			if len(msg.Ticket) > 0 {
 				reg.state.HandleTicketResponse(resp.att, msg.Ticket, wt)
 			} else {
-				rc.transport.log.Trace("Topic registration successful", "topic", reg.state.Topic(), "id", n.ID())
 				reg.state.HandleRegistered(resp.att, wt, 10*time.Minute)
 			}
 
