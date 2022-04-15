@@ -31,7 +31,9 @@ func TestTopicReg(t *testing.T) {
 	})
 
 	client.RegisterTopic(topicindex.TopicID{})
+
 	time.Sleep(10 * time.Second)
+
 	reg := bootnode.LocalTopicNodes(topicindex.TopicID{})
 	if len(reg) != 1 || reg[0].ID() != client.localNode.ID() {
 		t.Fatal("not registered")
