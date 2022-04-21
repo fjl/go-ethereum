@@ -1,4 +1,4 @@
-// Copyright 2018 The go-ethereum Authors
+// Copyright 2022 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -17,70 +17,75 @@
 package mclock
 
 import (
-	"sync"
 	"time"
 )
 
-type TimedNotify struct {
-	ch    chan struct{}
-	clock Clock
-
-	mu       sync.Mutex
+type Alarm struct {
+	ch       chan struct{}
+	clock    Clock
 	timer    Timer
 	deadline AbsTime
 }
 
-func NewTimedNotify(clock Clock) *TimedNotify {
+func NewAlarm(clock Clock) *Alarm {
 	if clock == nil {
 		panic("nil clock")
 	}
-	return &TimedNotify{
+	return &Alarm{
 		ch:    make(chan struct{}, 1),
 		clock: clock,
 	}
 }
 
-func (e *TimedNotify) Ch() <-chan struct{} {
+func (e *Alarm) C() <-chan struct{} {
 	return e.ch
 }
 
-func (e *TimedNotify) Schedule(d time.Duration) {
-	now := e.clock.Now()
-	e.schedule(now, now.Add(d))
-}
-
-func (e *TimedNotify) ScheduleAt(time AbsTime) {
+func (e *Alarm) Schedule(time AbsTime) {
 	now := e.clock.Now()
 	e.schedule(now, time)
 }
 
-func (e *TimedNotify) schedule(now, newDeadline AbsTime) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	// Re-use current timer if it would fire earlier than the new deadline.
+func (e *Alarm) Stop() {
+	// Clear timer.
 	if e.timer != nil {
-		switch {
-		case e.deadline <= now:
-			// This case is special: the timer has already expired.
-		case e.deadline <= newDeadline:
+		e.timer.Stop()
+	}
+	e.deadline = 0
+
+	// Drain the channel.
+	select {
+	case <-e.ch:
+	default:
+	}
+}
+
+func (e *Alarm) schedule(now, newDeadline AbsTime) {
+	if e.timer != nil {
+		if e.deadline > now && e.deadline <= newDeadline {
+			// Here, the current timer can be reused because it is already scheduled to
+			// occur earlier than the new deadline.
+			//
+			// The e.deadline >= now part of the condition is important. If the old
+			// deadline lies in the past, we assume the timer has already fired and needs
+			// to be rescheduled.
 			return
 		}
 		e.timer.Stop()
-		e.timer = nil
 	}
 
 	// Set the timer.
 	d := time.Duration(0)
-	if newDeadline > now {
-		d = newDeadline.Sub(now)
+	if newDeadline < now {
 		newDeadline = now
+	} else {
+		d = newDeadline.Sub(now)
 	}
 	e.timer = e.clock.AfterFunc(d, e.send)
 	e.deadline = newDeadline
 }
 
-func (e *TimedNotify) send() {
+func (e *Alarm) send() {
 	select {
 	case e.ch <- struct{}{}:
 	default:
