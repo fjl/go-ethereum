@@ -20,6 +20,13 @@ import (
 	"time"
 )
 
+// Alarm is a timed notification on a channel. This is very similar to a regular timer,
+// but has better ergonomics for use in code that needs to re-schedule the same timer over
+// and over.
+//
+// When scheduling an Alarm, the channel returned by C() will receive a value no later
+// than the scheduled time. Alarms can be rescheduled to an earlier time by calling
+// Schedule again, and can also be canceled by calling Stop.
 type Alarm struct {
 	ch       chan struct{}
 	clock    Clock
@@ -27,6 +34,7 @@ type Alarm struct {
 	deadline AbsTime
 }
 
+// NewAlarm creates an Alarm.
 func NewAlarm(clock Clock) *Alarm {
 	if clock == nil {
 		panic("nil clock")
@@ -37,15 +45,15 @@ func NewAlarm(clock Clock) *Alarm {
 	}
 }
 
+// C returns the alarm notification channel.
+// The channel returned by C remains identical for the entire
+// lifetime of the Alarm, and the channel is never closed.
 func (e *Alarm) C() <-chan struct{} {
 	return e.ch
 }
 
-func (e *Alarm) Schedule(time AbsTime) {
-	now := e.clock.Now()
-	e.schedule(now, time)
-}
-
+// Stop cancels the alarm and drains the channel.
+// This method is not safe for concurrent use.
 func (e *Alarm) Stop() {
 	// Clear timer.
 	if e.timer != nil {
@@ -58,6 +66,15 @@ func (e *Alarm) Stop() {
 	case <-e.ch:
 	default:
 	}
+}
+
+// Schedule sets the alarm to occur no later than the given time.
+// If an alarm is already scheduled to occur, it will fire at the earlier
+// of the two times, i.e. it is not possible to move an already-scheduled
+// alarm to a later time.
+func (e *Alarm) Schedule(time AbsTime) {
+	now := e.clock.Now()
+	e.schedule(now, time)
 }
 
 func (e *Alarm) schedule(now, newDeadline AbsTime) {
