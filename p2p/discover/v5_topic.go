@@ -124,7 +124,7 @@ func (reg *topicReg) run(rc *topicRegController) {
 	defer reg.wg.Done()
 
 	var (
-		updateEv      = mclock.NewEvent(reg.clock)
+		updateEv      = mclock.NewTimedNotify(reg.clock)
 		updateCh      <-chan struct{}
 		sendAttempt   *topicindex.RegAttempt
 		sendAttemptCh chan<- *topicindex.RegAttempt
