@@ -19,7 +19,6 @@ package topicindex
 import (
 	"container/heap"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -97,31 +96,11 @@ func (r *Registration) LookupTarget() enode.ID {
 	center := enode.ID(r.topic)
 	for i := range r.buckets {
 		if r.buckets[i].count[Registered] == 0 {
-			dist := i + 256
-			return idAtDistance(center, dist)
+			dist := 256 - i
+			return enode.RandomID(center, dist)
 		}
 	}
 	return center
-}
-
-// idAtDistance returns a random hash such that enode.LogDist(a, b) == n
-func idAtDistance(a enode.ID, n int) (b enode.ID) {
-	if n == 0 {
-		return a
-	}
-	// flip bit at position n, fill the rest with random bits
-	b = a
-	pos := len(a) - n/8 - 1
-	bit := byte(0x01) << (byte(n%8) - 1)
-	if bit == 0 {
-		pos++
-		bit = 0x80
-	}
-	b[pos] = a[pos]&^bit | ^a[pos]&bit // TODO: randomize end bits
-	for i := pos + 1; i < len(a); i++ {
-		b[i] = byte(rand.Intn(255))
-	}
-	return b
 }
 
 // AddNodes notifies the registration process about found nodes.
@@ -175,22 +154,39 @@ func (r *Registration) refillAttempts(b *regBucket) {
 	}
 }
 
-// NextRequest returns a registration attempt.
-// If there is nothing to do, this method returns nil.
-func (r *Registration) NextRequest() *RegAttempt {
-	now := r.clock.Now()
+// NextUpdateTime returns the next time Update should be called.
+func (r *Registration) NextUpdateTime() mclock.AbsTime {
+	for len(r.heap) > 0 {
+		att := r.heap[0]
+		switch att.State {
+		case Standby:
+			panic("standby attempt in Registration.heap")
+		case Registered, Waiting:
+			return att.NextTime
+		}
+	}
+	return Never
+}
 
+// Update processes the attempt queue and returns the next attempt in state 'Waiting'.
+func (r *Registration) Update() *RegAttempt {
+	now := r.clock.Now()
 	for len(r.heap) > 0 {
 		att := r.heap[0]
 		switch att.State {
 		case Standby:
 			panic("standby attempt in Registration.heap")
 		case Registered:
-			if att.NextTime <= now {
+			if now >= att.NextTime {
 				r.removeAttempt(att)
+				r.refillAttempts(att.bucket)
 			}
+			return nil
 		case Waiting:
-			return att
+			if now >= att.NextTime {
+				return att
+			}
+			return nil
 		}
 	}
 	return nil
