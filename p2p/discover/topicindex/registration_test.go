@@ -29,7 +29,7 @@ func TestRegistrationRequests(t *testing.T) {
 	cfg := testConfig(t)
 	r := NewRegistration(topic1, cfg)
 
-	if req := r.NextRequest(); req != nil {
+	if req := r.Update(); req != nil {
 		t.Fatal("request spawned on fresh Registration")
 	}
 
@@ -42,16 +42,16 @@ func TestRegistrationRequests(t *testing.T) {
 		r.AddNodes(nodes)
 	}
 
-	req := r.NextRequest()
+	req := r.Update()
 	if req == nil {
 		t.Fatal("no request scheduled")
 	}
-	if r.NextRequest() != req {
+	if r.Update() != req {
 		t.Fatal("top request changed")
 	}
 
 	r.StartRequest(req)
-	if r.NextRequest() == req {
+	if r.Update() == req {
 		t.Fatal("top request not removed")
 	}
 	r.HandleRegistered(req, 1*time.Second, 10*time.Minute)

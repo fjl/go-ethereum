@@ -123,35 +123,46 @@ func (reg *topicReg) stop() {
 func (reg *topicReg) run(rc *topicRegController) {
 	defer reg.wg.Done()
 
-	attemptTimer := time.NewTimer(0)
-	<-attemptTimer.C
+	var (
+		updateEv      = mclock.NewEvent(reg.clock)
+		updateCh      <-chan struct{}
+		sendAttempt   *topicindex.RegAttempt
+		sendAttemptCh chan<- *topicindex.RegAttempt
+	)
 
 	for {
-		var (
-			reqCh       chan<- *topicindex.RegAttempt
-			nextAttempt = reg.state.NextRequest()
-		)
-		if nextAttempt != nil {
-			now := reg.clock.Now()
-			if nextAttempt.NextTime <= now {
-				// Request is due immediately.
-				reqCh = reg.regRequest
-			} else {
-				// Wake up the loop when the next attempt is due.
-				attemptTimer.Reset(nextAttempt.NextTime.Sub(now))
-			}
+		// Disable updates while dispatching the next attempt's request.
+		if sendAttempt == nil {
+			updateEv.ScheduleAt(reg.state.NextUpdateTime())
+			updateCh = updateEv.Ch()
 		}
 
 		select {
+		// Loop exit.
+		case <-reg.quit:
+			close(reg.regRequest)
+			close(reg.lookupTarget)
+			reg.lookupCancel()
+			return
+
 		// Lookup management.
 		case reg.lookupTarget <- reg.state.LookupTarget():
 		case nodes := <-reg.lookupResults:
 			reg.state.AddNodes(nodes)
 
-		// Registration attempts.
-		case <-attemptTimer.C:
-		case reqCh <- nextAttempt:
-			reg.state.StartRequest(nextAttempt)
+		// Attempt queue updates.
+		case <-updateCh:
+			att := reg.state.Update()
+			if att != nil {
+				sendAttempt = att
+				sendAttemptCh = reg.regRequest
+			}
+
+		// Registration requests.
+		case sendAttemptCh <- sendAttempt:
+			reg.state.StartRequest(sendAttempt)
+			sendAttemptCh = nil
+			sendAttempt = nil
 
 		case resp := <-reg.regResponse:
 			if resp.err != nil {
@@ -166,13 +177,6 @@ func (reg *topicReg) run(rc *topicRegController) {
 			} else {
 				reg.state.HandleRegistered(resp.att, wt, 10*time.Minute)
 			}
-
-		case <-reg.quit:
-			// Quit runRequests, runLookups.
-			close(reg.regRequest)
-			close(reg.lookupTarget)
-			reg.lookupCancel()
-			return
 		}
 	}
 }
