@@ -30,7 +30,7 @@ type TimedNotify struct {
 	deadline AbsTime
 }
 
-func NewEvent(clock Clock) *TimedNotify {
+func NewTimedNotify(clock Clock) *TimedNotify {
 	if clock == nil {
 		panic("nil clock")
 	}
