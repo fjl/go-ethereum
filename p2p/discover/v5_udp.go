@@ -263,7 +263,7 @@ func (t *UDPv5) StopRegisterTopic(topic topicindex.TopicID) {
 
 // LocalTopicNodes returns all locally-registered nodes for a topic.
 func (t *UDPv5) LocalTopicNodes(topic topicindex.TopicID) []*enode.Node {
-	done := make(chan []*enode.Node)
+	done := make(chan []*enode.Node, 1)
 	fn := func() { done <- t.topicTable.Nodes(topic) }
 	select {
 	case t.onDispatchCh <- fn:
