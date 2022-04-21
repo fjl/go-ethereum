@@ -124,7 +124,7 @@ func (reg *topicReg) run(rc *topicRegController) {
 	defer reg.wg.Done()
 
 	var (
-		updateEv      = mclock.NewTimedNotify(reg.clock)
+		updateEv      = mclock.NewAlarm(reg.clock)
 		updateCh      <-chan struct{}
 		sendAttempt   *topicindex.RegAttempt
 		sendAttemptCh chan<- *topicindex.RegAttempt
@@ -133,8 +133,8 @@ func (reg *topicReg) run(rc *topicRegController) {
 	for {
 		// Disable updates while dispatching the next attempt's request.
 		if sendAttempt == nil {
-			updateEv.ScheduleAt(reg.state.NextUpdateTime())
-			updateCh = updateEv.Ch()
+			updateEv.Schedule(reg.state.NextUpdateTime())
+			updateCh = updateEv.C()
 		}
 
 		select {
