@@ -69,10 +69,15 @@ func (e *Alarm) Stop() {
 }
 
 // Schedule sets the alarm to occur no later than the given time.
-// If an alarm is already scheduled to occur, it will fire at the earlier
-// of the two times, i.e. it is not possible to move an already-scheduled
-// alarm to a later time.
+//
+// If an alarm is already scheduled, it will fire at the earlier of the two times,
+// i.e. it is not possible to move an already-scheduled alarm to a later time.
+//
+// If 'time' is negative, the alarm will not be scheduled.
 func (e *Alarm) Schedule(time AbsTime) {
+	if time < 0 {
+		return
+	}
 	now := e.clock.Now()
 	e.schedule(now, time)
 }
