@@ -89,7 +89,7 @@ func (tab *TopicTable) NextExpiryTime() mclock.AbsTime {
 	if e != nil {
 		return e.Value.(*topicTableEntry).exp
 	}
-	return ^mclock.AbsTime(0)
+	return Never
 }
 
 // Expire removes inactive registrations.
