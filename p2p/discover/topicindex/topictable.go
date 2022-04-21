@@ -71,7 +71,7 @@ func (tab *TopicTable) Nodes(topic TopicID) []*enode.Node {
 	now := tab.config.Clock.Now()
 	reglist := tab.reg[topic]
 	if reglist == nil {
-		return nil
+		return []*enode.Node{}
 	}
 	nodes := make([]*enode.Node, 0, reglist.Len())
 	for e := reglist.Front(); e != nil; e = e.Next() {
