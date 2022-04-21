@@ -554,22 +554,16 @@ func (t *UDPv5) callDone(c *callV5) {
 func (t *UDPv5) dispatch() {
 	defer t.wg.Done()
 
-	var (
-		topicExpiryTimer = t.clock.NewTimer(0)
-		nextTopicExp     mclock.AbsTime
-	)
+	var topicExp = mclock.NewTimedNotify(t.clock)
 
 	// Arm first read.
 	t.readNextCh <- struct{}{}
 
 	for {
-		if e := t.topicTable.NextExpiryTime(); e <= nextTopicExp {
-			topicExpiryTimer.Reset(t.clock.Now().Sub(e))
-			nextTopicExp = e
-		}
+		topicExp.ScheduleAt(t.topicTable.NextExpiryTime())
 
 		select {
-		case <-topicExpiryTimer.C():
+		case <-topicExp.Ch():
 			t.topicTable.Expire()
 
 		case fn := <-t.onDispatchCh:
