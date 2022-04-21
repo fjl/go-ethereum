@@ -193,13 +193,16 @@ func (reg *topicReg) runLookups(rc *topicRegController) {
 		}
 
 		// Wait a bit before starting the next lookup.
-		sleep := time.NewTimer(200 * time.Millisecond)
-		defer sleep.Stop()
-		select {
-		case <-sleep.C:
-		case <-reg.quit:
-			return
-		}
+		reg.sleep(200 * time.Millisecond)
+	}
+}
+
+func (reg *topicReg) sleep(d time.Duration) {
+	sleep := reg.clock.NewTimer(d)
+	defer sleep.Stop()
+	select {
+	case <-sleep.C():
+	case <-reg.quit:
 	}
 }
 
