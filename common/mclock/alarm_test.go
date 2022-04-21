@@ -63,7 +63,7 @@ func TestAlarm(t *testing.T) {
 
 // This test checks that scheduling an Alarm to an earlier time than the
 // one already scheduled works properly.
-func TestAlarmMultiple(t *testing.T) {
+func TestAlarmScheduleEarlier(t *testing.T) {
 	clk := new(Simulated)
 	clk.Run(20)
 	a := NewAlarm(clk)
@@ -72,6 +72,22 @@ func TestAlarmMultiple(t *testing.T) {
 	clk.Run(5)
 	a.Schedule(clk.Now() + 1)
 	clk.Run(3)
+	if !recv(a.C()) {
+		t.Fatal("Alarm did not fire")
+	}
+}
+
+// This test checks that scheduling an Alarm to a later time than the
+// one already scheduled works properly.
+func TestAlarmScheduleLater(t *testing.T) {
+	clk := new(Simulated)
+	clk.Run(20)
+	a := NewAlarm(clk)
+
+	a.Schedule(clk.Now() + 50)
+	clk.Run(5)
+	a.Schedule(clk.Now() + 100)
+	clk.Run(50)
 	if !recv(a.C()) {
 		t.Fatal("Alarm did not fire")
 	}
