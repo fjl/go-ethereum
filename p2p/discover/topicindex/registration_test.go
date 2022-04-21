@@ -70,7 +70,7 @@ func nodesAtDistance(base enode.ID, ld int, n int) []*enode.Node {
 func nodeAtDistance(base enode.ID, ld int, ip net.IP) *enode.Node {
 	var r enr.Record
 	r.Set(enr.IP(ip))
-	return enode.SignNull(&r, idAtDistance(base, ld))
+	return enode.SignNull(&r, enode.RandomID(base, ld))
 }
 
 func intIP(i int) net.IP {
