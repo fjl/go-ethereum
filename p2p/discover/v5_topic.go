@@ -197,7 +197,7 @@ func (reg *topicReg) runLookups(rc *topicRegController) {
 		}
 
 		// Wait a bit before starting the next lookup.
-		reg.sleep(200 * time.Millisecond)
+		reg.sleep(2 * time.Second)
 	}
 }
 
