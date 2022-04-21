@@ -56,6 +56,7 @@ const (
 )
 
 type regBucket struct {
+	dist  int
 	att   map[enode.ID]*RegAttempt
 	count [nRegStates]int
 }
@@ -79,8 +80,11 @@ func NewRegistration(topic TopicID, config Config) *Registration {
 		log:     config.Log.New("topic", topic),
 		timeout: config.RegAttemptTimeout,
 	}
+	dist := 256
 	for i := range r.buckets {
 		r.buckets[i].att = make(map[enode.ID]*RegAttempt)
+		r.buckets[i].dist = dist
+		dist--
 	}
 	return r
 }
@@ -94,10 +98,9 @@ func (r *Registration) Topic() TopicID {
 func (r *Registration) LookupTarget() enode.ID {
 	// This finds the closest bucket with no registrations.
 	center := enode.ID(r.topic)
-	for i := range r.buckets {
-		if r.buckets[i].count[Registered] == 0 {
-			dist := 256 - i
-			return enode.RandomID(center, dist)
+	for _, b := range r.buckets {
+		if b.count[Registered] == 0 {
+			return enode.RandomID(center, b.dist)
 		}
 	}
 	return center
