@@ -76,6 +76,7 @@ type RegAttempt struct {
 func NewRegistration(topic TopicID, config Config) *Registration {
 	config = config.withDefaults()
 	r := &Registration{
+		topic:   topic,
 		clock:   config.Clock,
 		log:     config.Log.New("topic", topic),
 		timeout: config.RegAttemptTimeout,
