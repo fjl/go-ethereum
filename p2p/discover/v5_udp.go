@@ -554,16 +554,16 @@ func (t *UDPv5) callDone(c *callV5) {
 func (t *UDPv5) dispatch() {
 	defer t.wg.Done()
 
-	var topicExp = mclock.NewTimedNotify(t.clock)
+	var topicExp = mclock.NewAlarm(t.clock)
 
 	// Arm first read.
 	t.readNextCh <- struct{}{}
 
 	for {
-		topicExp.ScheduleAt(t.topicTable.NextExpiryTime())
+		topicExp.Schedule(t.topicTable.NextExpiryTime())
 
 		select {
-		case <-topicExp.Ch():
+		case <-topicExp.C():
 			t.topicTable.Expire()
 
 		case fn := <-t.onDispatchCh:
