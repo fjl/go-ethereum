@@ -101,8 +101,8 @@ func TestAlarmNegative(t *testing.T) {
 
 	a.Schedule(-1)
 	clk.Run(1) // needed to process timers
-	if recv(a.C()) {
-		t.Fatal("Alarm did fired for negative time")
+	if !recv(a.C()) {
+		t.Fatal("Alarm did not fire for negative time")
 	}
 }
 

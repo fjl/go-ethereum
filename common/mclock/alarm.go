@@ -44,10 +44,8 @@ func NewAlarm(clock Clock) *Alarm {
 	}
 }
 
-// C returns the alarm notification channel.
-//
-// The channel returned by C remains identical for the entire lifetime of the
-// Alarm, and is never closed.
+// C returns the alarm notification channel. This channel remains identical for
+// the entire lifetime of the alarm, and is never closed.
 func (e *Alarm) C() <-chan struct{} {
 	return e.ch
 }
@@ -68,14 +66,9 @@ func (e *Alarm) Stop() {
 	}
 }
 
-// Schedule sets the alarm to fire no later than the given time. If the alarm is already
-// scheduled but has not fired yet, it may fire earlier than the given time.
-//
-// Negative time values are ignored, i.e. they do not modify the alarm.
+// Schedule sets the alarm to fire no later than the given time. If the alarm was already
+// scheduled but has not fired yet, it may fire earlier than the newly-scheduled time.
 func (e *Alarm) Schedule(time AbsTime) {
-	if time < 0 {
-		return
-	}
 	now := e.clock.Now()
 	e.schedule(now, time)
 }
