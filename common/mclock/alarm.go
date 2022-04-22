@@ -20,13 +20,12 @@ import (
 	"time"
 )
 
-// Alarm is a timed notification on a channel. This is very similar to a regular timer,
-// but has better ergonomics for use in code that needs to re-schedule the same timer over
-// and over.
+// Alarm sends timed notifications on a channel. This is very similar to a regular timer,
+// but is easier to use in code that needs to re-schedule the same timer over and over.
 //
 // When scheduling an Alarm, the channel returned by C() will receive a value no later
-// than the scheduled time. Alarms can be rescheduled to an earlier time by calling
-// Schedule again, and can also be canceled by calling Stop.
+// than the scheduled time. An Alarm can be reused after it has fired and can also be
+// canceled by calling Stop.
 type Alarm struct {
 	ch       chan struct{}
 	clock    Clock
@@ -46,8 +45,9 @@ func NewAlarm(clock Clock) *Alarm {
 }
 
 // C returns the alarm notification channel.
-// The channel returned by C remains identical for the entire
-// lifetime of the Alarm, and the channel is never closed.
+//
+// The channel returned by C remains identical for the entire lifetime of the
+// Alarm, and is never closed.
 func (e *Alarm) C() <-chan struct{} {
 	return e.ch
 }
@@ -68,12 +68,10 @@ func (e *Alarm) Stop() {
 	}
 }
 
-// Schedule sets the alarm to occur no later than the given time.
+// Schedule sets the alarm to fire no later than the given time. If the alarm is already
+// scheduled but has not fired yet, it may fire earlier than the given time.
 //
-// If an alarm is already scheduled, it will fire at the earlier of the two times,
-// i.e. it is not possible to move an already-scheduled alarm to a later time.
-//
-// If 'time' is negative, the alarm will not be scheduled.
+// Negative time values are ignored, i.e. they do not modify the alarm.
 func (e *Alarm) Schedule(time AbsTime) {
 	if time < 0 {
 		return
