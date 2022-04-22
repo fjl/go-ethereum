@@ -557,7 +557,10 @@ func (t *UDPv5) dispatch() {
 	t.readNextCh <- struct{}{}
 
 	for {
-		topicExp.Schedule(t.topicTable.NextExpiryTime())
+		nextExp := t.topicTable.NextExpiryTime()
+		if nextExp != topicindex.Never {
+			topicExp.Schedule(nextExp)
+		}
 
 		select {
 		case <-topicExp.C():

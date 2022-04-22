@@ -133,8 +133,11 @@ func (reg *topicReg) run(rc *topicRegController) {
 	for {
 		// Disable updates while dispatching the next attempt's request.
 		if sendAttempt == nil {
-			updateEv.Schedule(reg.state.NextUpdateTime())
-			updateCh = updateEv.C()
+			next := reg.state.NextUpdateTime()
+			if next != topicindex.Never {
+				updateEv.Schedule()
+				updateCh = updateEv.C()
+			}
 		}
 
 		select {
