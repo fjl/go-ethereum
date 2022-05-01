@@ -22,54 +22,87 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
-type topicRegController struct {
+// topicSystem manages the resources required for registering and searching
+// in topics.
+type topicSystem struct {
 	transport *UDPv5
 	config    topicindex.Config
 
-	mu  sync.Mutex
-	reg map[topicindex.TopicID]*topicReg
+	mu     sync.Mutex
+	reg    map[topicindex.TopicID]*topicReg
+	search map[topicindex.TopicID]*topicSearch
 }
 
-func newTopicRegController(transport *UDPv5, config topicindex.Config) *topicRegController {
-	return &topicRegController{
+func newTopicSystem(transport *UDPv5, config topicindex.Config) *topicSystem {
+	return &topicSystem{
 		transport: transport,
 		config:    config,
 		reg:       make(map[topicindex.TopicID]*topicReg),
+		search:    make(map[topicindex.TopicID]*topicSearch),
 	}
 }
 
-func (rc *topicRegController) startTopic(topic topicindex.TopicID) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
+func (sys *topicSystem) register(topic topicindex.TopicID) {
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
 
-	if _, ok := rc.reg[topic]; ok {
+	if _, ok := sys.reg[topic]; ok {
 		return
 	}
-	rc.reg[topic] = newTopicReg(rc, topic)
+	sys.reg[topic] = newTopicReg(sys, topic)
 }
 
-func (rc *topicRegController) stopTopic(topic topicindex.TopicID) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
+func (sys *topicSystem) stopRegister(topic topicindex.TopicID) {
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
 
-	if reg := rc.reg[topic]; reg != nil {
+	if reg := sys.reg[topic]; reg != nil {
 		reg.stop()
-		delete(rc.reg, topic)
+		delete(sys.reg, topic)
 	}
 }
 
-func (rc *topicRegController) stopAllTopics() {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
+func (sys *topicSystem) stop() {
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
 
-	for topic, reg := range rc.reg {
+	for topic, reg := range sys.reg {
 		reg.stop()
-		delete(rc.reg, topic)
+		delete(sys.reg, topic)
+	}
+	for topic, s := range sys.search {
+		s.stop()
+		delete(sys.search, topic)
+	}
+}
+
+func (sys *topicSystem) newSearchIterator(topic topicindex.TopicID) enode.Iterator {
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
+
+	s, _ := sys.search[topic]
+	if s == nil {
+		s = newTopicSearch(sys, topic)
+		sys.search[topic] = s
+	}
+	s.refcount++
+	return newTopicSearchIterator(sys, s)
+}
+
+func (sys *topicSystem) iteratorClosed(s *topicSearch) {
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
+
+	s.refcount--
+	if s.refcount == 0 {
+		// Last iterator of this search was closed.
+		s.stop()
 	}
 }
 
@@ -95,23 +128,23 @@ type regResponse struct {
 	err error
 }
 
-func newTopicReg(rc *topicRegController, topic topicindex.TopicID) *topicReg {
+func newTopicReg(sys *topicSystem, topic topicindex.TopicID) *topicReg {
 	ctx, cancel := context.WithCancel(context.Background())
 	reg := &topicReg{
-		state:         topicindex.NewRegistration(topic, rc.config),
-		clock:         rc.config.Clock,
+		state:         topicindex.NewRegistration(topic, sys.config),
+		clock:         sys.config.Clock,
 		quit:          make(chan struct{}),
 		lookupCtx:     ctx,
 		lookupCancel:  cancel,
 		lookupTarget:  make(chan enode.ID),
-		lookupResults: make(chan []*enode.Node),
+		lookupResults: make(chan []*enode.Node, 1),
 		regRequest:    make(chan *topicindex.RegAttempt),
 		regResponse:   make(chan regResponse),
 	}
 	reg.wg.Add(3)
-	go reg.run(rc)
-	go reg.runLookups(rc)
-	go reg.runRequests(rc)
+	go reg.run(sys)
+	go reg.runLookups(sys)
+	go reg.runRequests(sys)
 	return reg
 }
 
@@ -120,7 +153,7 @@ func (reg *topicReg) stop() {
 	reg.wg.Wait()
 }
 
-func (reg *topicReg) run(rc *topicRegController) {
+func (reg *topicReg) run(sys *topicSystem) {
 	defer reg.wg.Done()
 
 	var (
@@ -135,7 +168,7 @@ func (reg *topicReg) run(rc *topicRegController) {
 		if sendAttempt == nil {
 			next := reg.state.NextUpdateTime()
 			if next != topicindex.Never {
-				updateEv.Schedule()
+				updateEv.Schedule(next)
 				updateCh = updateEv.C()
 			}
 		}
@@ -184,11 +217,11 @@ func (reg *topicReg) run(rc *topicRegController) {
 	}
 }
 
-func (reg *topicReg) runLookups(rc *topicRegController) {
+func (reg *topicReg) runLookups(sys *topicSystem) {
 	defer reg.wg.Done()
 
 	for target := range reg.lookupTarget {
-		l := rc.transport.newLookup(reg.lookupCtx, target)
+		l := sys.transport.newLookup(reg.lookupCtx, target)
 		for l.advance() {
 			// Send results of this step over to the main loop.
 			nodes := unwrapNodes(l.replyBuffer)
@@ -216,14 +249,14 @@ func (reg *topicReg) sleep(d time.Duration) {
 // runRequests performs topic registration requests.
 // TODO: this is not great because it sends one at a time and waits for a response.
 // registrations could just be sent async.
-func (reg *topicReg) runRequests(rc *topicRegController) {
+func (reg *topicReg) runRequests(sys *topicSystem) {
 	defer reg.wg.Done()
 
 	for attempt := range reg.regRequest {
 		n := attempt.Node
 		topic := reg.state.Topic()
 		resp := regResponse{att: attempt}
-		resp.msg, resp.err = rc.transport.topicRegister(n, topic, attempt.Ticket)
+		resp.msg, resp.err = sys.transport.topicRegister(n, topic, attempt.Ticket)
 
 		// Send response to main loop.
 		select {
@@ -232,4 +265,188 @@ func (reg *topicReg) runRequests(rc *topicRegController) {
 			return
 		}
 	}
+}
+
+// topicSearch handles searching in a single topic.
+type topicSearch struct {
+	state       *topicindex.Search
+	clock       mclock.Clock
+	resultScope event.SubscriptionScope
+	resultFeed  event.Feed
+
+	wg   sync.WaitGroup
+	quit chan struct{}
+
+	queryCh     chan *enode.Node
+	queryRespCh chan topicQueryResp
+
+	lookupCtx     context.Context
+	lookupCancel  context.CancelFunc
+	lookupTarget  chan enode.ID
+	lookupResults chan []*enode.Node
+
+	// This tracks how many iterators are subscribed to this search.
+	// Access to this field is guarded by topicSystem.mu.
+	refcount int
+}
+
+type topicQueryResp struct {
+	src   *enode.Node
+	nodes []*enode.Node
+	err   error
+}
+
+func newTopicSearch(sys *topicSystem, topic topicindex.TopicID) *topicSearch {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s := &topicSearch{
+		state: topicindex.NewSearch(topic, sys.config),
+		clock: sys.config.Clock,
+		quit:  make(chan struct{}),
+
+		// query
+		queryCh:     make(chan *enode.Node),
+		queryRespCh: make(chan topicQueryResp),
+
+		// lookup
+		lookupCtx:     ctx,
+		lookupCancel:  cancel,
+		lookupTarget:  make(chan enode.ID),
+		lookupResults: make(chan []*enode.Node, 1),
+	}
+	s.wg.Add(3)
+	go s.run()
+	go s.runLookups(sys)
+	go s.runRequests(sys)
+	return s
+}
+
+func (s *topicSearch) subscribeResults(ch chan<- *enode.Node) event.Subscription {
+	return s.resultScope.Track(s.resultFeed.Subscribe(ch))
+}
+
+func (s *topicSearch) stop() {
+	close(s.quit)
+	s.wg.Wait()
+}
+
+func (s *topicSearch) run() {
+	defer s.wg.Done()
+
+	lookupEv := mclock.NewAlarm(s.clock)
+
+	for {
+		next := s.state.NextLookupTime()
+		if next != topicindex.Never {
+			lookupEv.Schedule(next)
+		}
+
+		select {
+		// Loop exit.
+		case <-s.quit:
+			s.lookupCancel()
+			close(s.queryCh)
+			s.resultScope.Close()
+			return
+
+		// Lookup management.
+		case <-lookupEv.C():
+			select {
+			case s.lookupTarget <- s.state.LookupTarget():
+			case <-s.quit:
+			}
+
+		case nodes := <-s.lookupResults:
+			s.state.AddNodes(nodes)
+
+		// Queries.
+		// case <-queryEv:
+
+		case resp := <-s.queryRespCh:
+			for n := range resp.nodes {
+				s.resultFeed.Send(n)
+			}
+		}
+	}
+}
+
+// TODO: this should be shared with topicReg somehow.
+func (s *topicSearch) runLookups(sys *topicSystem) {
+	defer s.wg.Done()
+
+	for target := range s.lookupTarget {
+		l := sys.transport.newLookup(s.lookupCtx, target)
+		// Note: here, only the final results (i.e. closest to target) are taken.
+		nodes := l.run()
+		select {
+		case s.lookupResults <- nodes:
+		case <-s.lookupCtx.Done():
+			return
+		}
+	}
+}
+
+func (s *topicSearch) runRequests(sys *topicSystem) {
+	defer s.wg.Done()
+
+	for n := range s.queryCh {
+		topic := s.state.Topic()
+		resp := topicQueryResp{}
+		resp.nodes, resp.err = sys.transport.topicQuery(n, topic)
+
+		// Send response to main loop.
+		select {
+		case s.queryRespCh <- resp:
+		case <-s.quit:
+			return
+		}
+	}
+}
+
+// topicSearchIterator implements enode.Iterator. It is an iterator
+// that returns nodes found by topic search.
+type topicSearchIterator struct {
+	sys    *topicSystem
+	search *topicSearch
+
+	sub     event.Subscription
+	ch      chan *enode.Node
+	closing sync.Once
+
+	node *enode.Node
+}
+
+func newTopicSearchIterator(sys *topicSystem, search *topicSearch) *topicSearchIterator {
+	ch := make(chan *enode.Node, 200)
+	sub := search.subscribeResults(ch)
+	return &topicSearchIterator{sys: sys, search: search, sub: sub, ch: ch}
+}
+
+func (tsi *topicSearchIterator) Next() bool {
+	select {
+	case n, ok := <-tsi.ch:
+		tsi.node = n
+		return ok
+	case <-tsi.sub.Err():
+		// This case activates when topicSearch is stopped.
+		tsi.Close()
+		return false
+	}
+}
+
+func (tsi *topicSearchIterator) Node() *enode.Node {
+	return tsi.node
+}
+
+func (tsi *topicSearchIterator) Close() {
+	tsi.closing.Do(func() {
+		tsi.sys.iteratorClosed(tsi.search)
+		tsi.sub.Unsubscribe()
+		close(tsi.ch)
+
+		// Drain ch. This guarantees that, when Close is done,
+		// Next will always return false.
+		for range tsi.ch {
+		}
+	})
 }

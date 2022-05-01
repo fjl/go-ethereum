@@ -80,7 +80,7 @@ type UDPv5 struct {
 	// topic stuff
 	topicTable   *topicindex.TopicTable
 	ticketSealer *topicindex.TicketSealer
-	topicReg     *topicRegController
+	topicSys     *topicSystem
 
 	// channels into dispatch
 	packetInCh    chan ReadPacket
@@ -190,7 +190,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 	t.tab = tab
 
 	// Initialize topic registration.
-	t.topicReg = newTopicRegController(t, topicConfig)
+	t.topicSys = newTopicSystem(t, topicConfig)
 
 	return t, nil
 }
@@ -200,11 +200,16 @@ func (t *UDPv5) Self() *enode.Node {
 	return t.localNode.Node()
 }
 
+// LocalNode returns the current local node running the protocol.
+func (t *UDPv5) LocalNode() *enode.LocalNode {
+	return t.localNode
+}
+
 // Close shuts down packet processing.
 func (t *UDPv5) Close() {
 	t.closeOnce.Do(func() {
 		t.cancelCloseCtx()
-		t.topicReg.stopAllTopics()
+		t.topicSys.stop()
 		t.conn.Close()
 		t.wg.Wait()
 		t.tab.close()
@@ -253,12 +258,12 @@ func (t *UDPv5) AllNodes() []*enode.Node {
 
 // RegisterTopic adds a topic for registration.
 func (t *UDPv5) RegisterTopic(topic topicindex.TopicID) {
-	t.topicReg.startTopic(topic)
+	t.topicSys.register(topic)
 }
 
 // StopRegisterTopic removes a topic from registration.
 func (t *UDPv5) StopRegisterTopic(topic topicindex.TopicID) {
-	t.topicReg.stopTopic(topic)
+	t.topicSys.stopRegister(topic)
 }
 
 // LocalTopicNodes returns all locally-registered nodes for a topic.
@@ -273,15 +278,15 @@ func (t *UDPv5) LocalTopicNodes(topic topicindex.TopicID) []*enode.Node {
 	}
 }
 
-// LocalNode returns the current local node running the protocol.
-func (t *UDPv5) LocalNode() *enode.LocalNode {
-	return t.localNode
+// TopicSearch returns an iterator over random nodes found in a topic.
+func (t *UDPv5) TopicSearch(topic topicindex.TopicID) enode.Iterator {
+	return t.topicSys.newSearchIterator(topic)
 }
 
 // RegisterTalkHandler adds a handler for 'talk requests'. The handler function is called
 // whenever a request for the given protocol is received and should return the response
 // data or nil.
-func (t *UDPv5) RegisterTalkHandler(protocol string, handler TalkRequestHandler) { //
+func (t *UDPv5) RegisterTalkHandler(protocol string, handler TalkRequestHandler) {
 	t.trlock.Lock()
 	defer t.trlock.Unlock()
 	t.trhandlers[protocol] = handler
@@ -426,6 +431,13 @@ func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []
 	case err := <-resp.err:
 		return nil, err
 	}
+}
+
+// topicQuery sends TOPICQUERY and waits for one or more NODES responses.
+func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID) ([]*enode.Node, error) {
+	req := &v5wire.TopicQuery{Topic: topic[:]}
+	resp := t.call(n, v5wire.NodesMsg, req)
+	return t.waitForNodes(resp, nil)
 }
 
 // waitForNodes waits for NODES responses to the given call.
