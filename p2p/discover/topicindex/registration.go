@@ -29,6 +29,13 @@ import (
 const (
 	regBucketMaxAttempts     = 10
 	regBucketMaxReplacements = 20
+
+	// regTableDepth is the number of buckets kept in the registration table.
+	//
+	// The table only keeps nodes at logdist(topic, n) > (256 - regTableDepth).
+	// Should there be any nodes which are closer than this, they just go into the last
+	// (closest) bucket.
+	regTableDepth = 40
 )
 
 // Registration is the state associated with registering in a single topic.
@@ -36,7 +43,7 @@ type Registration struct {
 	clock   mclock.Clock
 	log     log.Logger
 	topic   TopicID
-	buckets [40]regBucket
+	buckets [regTableDepth]regBucket
 	heap    regHeap
 
 	timeout time.Duration
