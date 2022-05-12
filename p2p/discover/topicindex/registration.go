@@ -40,9 +40,11 @@ const (
 
 // Registration is the state associated with registering in a single topic.
 type Registration struct {
-	clock   mclock.Clock
-	log     log.Logger
-	topic   TopicID
+	clock mclock.Clock
+	log   log.Logger
+	topic TopicID
+
+	// Note: registration buckets are ordered close -> far.
 	buckets [regTableDepth]regBucket
 	heap    regHeap
 
@@ -91,8 +93,7 @@ func NewRegistration(topic TopicID, config Config) *Registration {
 	dist := 256
 	for i := range r.buckets {
 		r.buckets[i].att = make(map[enode.ID]*RegAttempt)
-		r.buckets[i].dist = dist
-		dist--
+		r.buckets[i].dist = dist - (len(r.buckets) - 1) + i
 	}
 	return r
 }
@@ -250,13 +251,12 @@ func (r *Registration) removeAttempt(att *RegAttempt) {
 }
 
 func (r *Registration) bucket(id enode.ID) *regBucket {
-	dist := 256 - enode.LogDist(enode.ID(r.topic), id)
-	if dist < len(r.buckets) {
-		dist = 0
-	} else {
-		dist -= len(r.buckets)
+	dist := enode.LogDist(enode.ID(r.topic), id)
+	index := dist - 256 + (len(r.buckets) - 1)
+	if index < 0 {
+		index = 0
 	}
-	return &r.buckets[dist]
+	return &r.buckets[index]
 }
 
 // regHeap is a priority queue of registration attempts. This should not be accessed

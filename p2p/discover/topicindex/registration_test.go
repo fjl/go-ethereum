@@ -25,6 +25,45 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
+func TestRegistrationBuckets(t *testing.T) {
+	cfg := testConfig(t)
+	r := NewRegistration(topic1, cfg)
+
+	var (
+		far256  = nodesAtDistance(enode.ID(topic1), 256, 3)
+		far255  = nodesAtDistance(enode.ID(topic1), 255, 3)
+		close5  = nodesAtDistance(enode.ID(topic1), 5, 1)
+		close20 = nodesAtDistance(enode.ID(topic1), 20, 1)
+	)
+	r.AddNodes(far256)
+	r.AddNodes(far255)
+	r.AddNodes(close5)
+	r.AddNodes(close20)
+
+	last := len(r.buckets) - 1
+	if !rbContainsAll(r.buckets[last], far256) {
+		t.Fatalf("far256 nodes missing in bucket[%d]", last)
+	}
+	if !rbContainsAll(r.buckets[last-1], far255) {
+		t.Fatalf("far255 nodes missing in bucket[%d]", last-1)
+	}
+	if !rbContainsAll(r.buckets[0], close5) {
+		t.Fatalf("close5 nodes missing in bucket[%d]", 0)
+	}
+	if !rbContainsAll(r.buckets[0], close20) {
+		t.Fatalf("close20 nodes missing in bucket[%d]", 0)
+	}
+}
+
+func rbContainsAll(b regBucket, nodes []*enode.Node) bool {
+	for _, n := range nodes {
+		if _, ok := b.att[n.ID()]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func TestRegistrationRequests(t *testing.T) {
 	cfg := testConfig(t)
 	r := NewRegistration(topic1, cfg)
