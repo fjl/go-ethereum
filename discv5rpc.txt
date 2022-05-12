@@ -28,7 +28,14 @@ Content-Type: application/json
 
 # Stop registering node 1 for topic
 
-POST http://localhost::port/
+POST http://localhost:20201
 Content-Type: application/json
 
 {"jsonrpc": "2.0", "id": 1, "method": "discv5_unregisterTopic", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"]}
+
+# Perform search for topic on node 2
+
+POST http://localhost:20202
+Content-Type: application/json
+
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 1]}
