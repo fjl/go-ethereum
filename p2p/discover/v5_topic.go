@@ -269,8 +269,9 @@ func (reg *topicReg) runRequests(sys *topicSystem) {
 
 // topicSearch handles searching in a single topic.
 type topicSearch struct {
-	state       *topicindex.Search
-	clock       mclock.Clock
+	topic  topicindex.TopicID
+	config topicindex.Config
+
 	resultScope event.SubscriptionScope
 	resultFeed  event.Feed
 
@@ -300,9 +301,8 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID) *topicSearch {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &topicSearch{
-		state: topicindex.NewSearch(topic, sys.config),
-		clock: sys.config.Clock,
-		quit:  make(chan struct{}),
+		config: sys.config,
+		quit:   make(chan struct{}),
 
 		// query
 		queryCh:     make(chan *enode.Node),
@@ -326,6 +326,7 @@ func (s *topicSearch) subscribeResults(ch chan<- *enode.Node) event.Subscription
 }
 
 func (s *topicSearch) stop() {
+	s.resultScope.Close()
 	close(s.quit)
 	s.wg.Wait()
 }
@@ -333,12 +334,30 @@ func (s *topicSearch) stop() {
 func (s *topicSearch) run() {
 	defer s.wg.Done()
 
-	lookupEv := mclock.NewAlarm(s.clock)
+	var (
+		state       = topicindex.NewSearch(s.topic, s.config)
+		lookupEv    = mclock.NewAlarm(s.config.Clock)
+		queryCh     chan<- *enode.Node
+		queryTarget *enode.Node
+	)
 
 	for {
-		next := s.state.NextLookupTime()
+		// State rollover.
+		if state.IsDone() {
+			state = topicindex.NewSearch(s.topic, s.config)
+		}
+		// Schedule lookups.
+		next := state.NextLookupTime()
 		if next != topicindex.Never {
 			lookupEv.Schedule(next)
+		}
+		// Ensure there is always one query running.
+		if queryTarget == nil {
+			t := state.QueryTarget()
+			if t != nil {
+				queryCh = s.queryCh
+				queryTarget = t
+			}
 		}
 
 		select {
@@ -346,26 +365,25 @@ func (s *topicSearch) run() {
 		case <-s.quit:
 			s.lookupCancel()
 			close(s.queryCh)
-			s.resultScope.Close()
 			return
 
 		// Lookup management.
 		case <-lookupEv.C():
 			select {
-			case s.lookupTarget <- s.state.LookupTarget():
+			case s.lookupTarget <- state.LookupTarget():
 			case <-s.quit:
 			}
-
 		case nodes := <-s.lookupResults:
-			s.state.AddNodes(nodes)
+			state.AddNodes(nodes)
 
 		// Queries.
-		// case <-queryEv:
-
+		case queryCh <- queryTarget:
 		case resp := <-s.queryRespCh:
 			for n := range resp.nodes {
 				s.resultFeed.Send(n)
 			}
+			state.AddResults(resp.src, resp.nodes)
+			queryTarget = nil
 		}
 	}
 }
@@ -390,9 +408,8 @@ func (s *topicSearch) runRequests(sys *topicSystem) {
 	defer s.wg.Done()
 
 	for n := range s.queryCh {
-		topic := s.state.Topic()
-		resp := topicQueryResp{}
-		resp.nodes, resp.err = sys.transport.topicQuery(n, topic)
+		resp := topicQueryResp{src: n}
+		resp.nodes, resp.err = sys.transport.topicQuery(n, s.topic)
 
 		// Send response to main loop.
 		select {
@@ -444,7 +461,7 @@ func (tsi *topicSearchIterator) Close() {
 		tsi.sub.Unsubscribe()
 		close(tsi.ch)
 
-		// Drain ch. This guarantees that, when Close is done,
+		// Drain tsi.ch. This guarantees that, when Close is done,
 		// Next will always return false.
 		for range tsi.ch {
 		}
