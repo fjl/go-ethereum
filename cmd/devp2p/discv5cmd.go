@@ -165,9 +165,6 @@ func startV5(ctx *cli.Context) *discover.UDPv5 {
 // ---------------------------
 // JSON tester
 
-func discv5API(ctx *cli.Context) {
-}
-
 type discAPI struct {
 	host *discover.UDPv5
 }
@@ -186,6 +183,17 @@ func (api *discAPI) NodeTable() []*enode.Node {
 
 func (api *discAPI) TopicNodes(topic common.Hash) []*enode.Node {
 	return api.host.LocalTopicNodes(topicindex.TopicID(topic))
+}
+
+func (api *discAPI) TopicSearch(topic common.Hash, numNodes int) []*enode.Node {
+	it := api.host.TopicSearch(topicindex.TopicID(topic))
+	defer it.Close()
+
+	var nodes []*enode.Node
+	for it.Next() && len(nodes) < numNodes {
+		nodes = append(nodes, it.Node())
+	}
+	return nodes
 }
 
 func (api *discAPI) LocalNode() *enode.Node {
