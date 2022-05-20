@@ -2,6 +2,10 @@
 
 set -e -x
 
+# -- Check XCode version
+xcodebuild -version
+# xcrun simctl list
+
 # -- Build for macOS and upload to Azure
 go run build/ci.go install -dlgo
 go run build/ci.go archive -type tar # -signer OSX_SIGNING_KEY -upload gethstore/builds
@@ -15,7 +19,6 @@ go run build/ci.go archive -type tar # -signer OSX_SIGNING_KEY -upload gethstore
 # pod setup --verbose
 
 # -- Check XCode version
-xctool -version
 xcrun simctl list
 
 # # -- Build for iOS and upload to Azure
