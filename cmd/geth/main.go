@@ -464,6 +464,9 @@ func unlockAccounts(ctx *cli.Context, stack *node.Node) {
 			unlocks = append(unlocks, trimmed)
 		}
 	}
+
+	// change
+
 	// Short circuit if there is no account to unlock.
 	if len(unlocks) == 0 {
 		return
