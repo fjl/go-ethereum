@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-N_NODES=3
+N_NODES="${1:-3}"
 DIR=discv5-test
 
 # make_keys creates all node keys.
