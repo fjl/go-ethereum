@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-N_NODES=2
+N_NODES=1000
 DIR=discv5-test
 IP="172.19."
 iface="tap"
@@ -22,7 +22,7 @@ get_node_url() {
     let "port = 30200 + $1"
     subnet="1."
     addr=$IP$subnet$1
-    ./devp2p key to-enode "$DIR/keys/node-$1.key" --tcp 0 --udp $port --ip $addr
+    ./devp2p key to-enode "$DIR/keys/node-$1.key" --tcp 0 --udp $port #--ip $addr
 }
 
 # start_nodes launches the node processes.
@@ -49,7 +49,7 @@ start_nodes() {
         logfile="$DIR/logs/node-$i.log"
         echo "Starting node $i..."
         rm -f "$logfile"
-        ./devp2p --verbosity 5 discv5 listen --bootnodes "$bootnode" --nodekey "$(cat $keyfile)" --addr "$addr:$port" --rpc "$addr:$rpc" 2>&1 | tee "$logfile" &
+        ./devp2p --verbosity 5 discv5 listen --bootnodes "$bootnode" --nodekey "$(cat $keyfile)" --addr "127.0.0.1:$port" --rpc "127.0.0.1:$rpc" 2>&1 | tee "$logfile" &
         host=$((host+1))
     done
 }
@@ -81,21 +81,21 @@ generate_ip_addresses(){
 
 cleanup(){
     kill $(jobs -p)
-    ip link del br0
-    for i in $(seq $N_NODES); do
-       ifacename=$iface$i
-       ip link del $ifacename
-    done
+#    ip link del br0
+#    for i in $(seq $N_NODES); do
+#       ifacename=$iface$i
+#       ip link del $ifacename
+#    done
 }
 
 # Generate all keys.
 make_keys
 
-generate_ip_addresses
+#generate_ip_addresses
 
 # Cleanup at exit.
 trap cleanup EXIT
 
 # Launch nodes.
-start_nodes
+#start_nodes
 wait

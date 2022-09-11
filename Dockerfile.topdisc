@@ -1,0 +1,29 @@
+# Support setting various labels on the final image
+ARG COMMIT=""
+ARG VERSION=""
+ARG BUILDNUM=""
+
+# Build Geth in a stock Go builder container
+FROM golang:1.17-alpine as builder
+
+RUN apk add --no-cache gcc musl-dev linux-headers git curl
+
+ADD . /go-ethereum
+RUN cd /go-ethereum && go build ./cmd/devp2p
+#comment down the below and use entrypoint instead
+#RUN cd /go-ethereum && /bin/sh ./run-network.sh 1
+WORKDIR /go-ethereum
+RUN ./devp2p key generate node.key
+EXPOSE 8545 8546 30303 30303/udp
+#uncomment and add here a command to run the topdisc node
+#CMD /go-ethereum/devp2p --verbosity 5 discv5 listen
+#ENTRYPOINT ["app", "arg1", "arg2"]
+
+# Add some metadata labels to help programatic image consumption
+ARG COMMIT=""
+ARG VERSION=""
+ARG BUILDNUM=""
+
+LABEL commit="$COMMIT" version="$VERSION" buildnum="$BUILDNUM"
+
+

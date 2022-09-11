@@ -1,0 +1,2 @@
+#!/bin/bash
+./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@go-ethereum_bootstrap_1:0?discport=32000 --addr $(/sbin/ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'):32000 --rpc $(/sbin/ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'):22000
