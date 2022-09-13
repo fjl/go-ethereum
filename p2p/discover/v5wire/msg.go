@@ -1,4 +1,4 @@
-// Copyright 2020 The go-ethereum Authors
+// Copyright 2019 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 package v5wire
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 
@@ -209,7 +210,7 @@ func (*TalkResponse) Kind() byte               { return TalkResponseMsg }
 func (p *TalkResponse) RequestID() []byte      { return p.ReqID }
 func (p *TalkResponse) SetRequestID(id []byte) { p.ReqID = id }
 
-func (*Regtopic) Name() string             { return "REGTOPIC/v5" }
+func (p *Regtopic) Name() string           { return "REGTOPIC/v5:" + hex.EncodeToString(p.Topic[:]) }
 func (*Regtopic) Kind() byte               { return RegtopicMsg }
 func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
@@ -219,7 +220,7 @@ func (*Regconfirmation) Kind() byte               { return RegconfirmationMsg }
 func (p *Regconfirmation) RequestID() []byte      { return p.ReqID }
 func (p *Regconfirmation) SetRequestID(id []byte) { p.ReqID = id }
 
-func (*TopicQuery) Name() string             { return "TOPICQUERY/v5" }
+func (p *TopicQuery) Name() string           { return "TOPICQUERY/v5:" + hex.EncodeToString(p.Topic[:]) }
 func (*TopicQuery) Kind() byte               { return TopicQueryMsg }
 func (p *TopicQuery) RequestID() []byte      { return p.ReqID }
 func (p *TopicQuery) SetRequestID(id []byte) { p.ReqID = id }
