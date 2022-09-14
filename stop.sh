@@ -1,4 +1,18 @@
 #!/bin/bash
 
-docker-compose down
-docker network prune
+#docker-compose down
+#dcker network prune
+
+N=1000
+
+cleanup() {
+    docker stop bootstrap-node
+    docker rm bootstrap-node
+    docker network rm bootstrap-network
+    for i in $(seq $N); do
+        docker stop node$i
+        docker rm node$i
+         docker network rm node$i-network
+    done
+}
+cleanup
