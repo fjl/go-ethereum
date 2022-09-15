@@ -8,6 +8,8 @@ fi
 
 #N=1000
 
+DIR=discv5-test
+
 PORT=32000
 RPC_PORT=22000
 export COMPOSE_PARALLEL_LIMIT=1000
@@ -48,14 +50,14 @@ start_network() {
 }
 
 start_nodes() {
-  DIR=discv5-test
+  mkdir -p $DIR/logs
   logfile="$DIR/logs/node-0.log"
-
-  docker run --network bootstrap-network --cap-add=NET_ADMIN --name bootstrap-node --mount type=bind,source=/home/sergi/workspace/go-ethereum/discv5-test,target=/go-ethereum/discv5-test devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --nodekey 7fbc0a865aad6ff63baf1d16e62c07e6cc7427d1f1fc99081af758d6aa27175b --addr $(get_bootstrap_network).2:$PORT --rpc $(get_bootstrap_network).2:$RPC_PORT 2>&1 > $logfile " &
+  
+  docker run --network bootstrap-network --cap-add=NET_ADMIN --name bootstrap-node --mount type=bind,source=$PWD/discv5-test,target=/go-ethereum/$DIR devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --nodekey 7fbc0a865aad6ff63baf1d16e62c07e6cc7427d1f1fc99081af758d6aa27175b --addr $(get_bootstrap_network).2:$PORT --rpc $(get_bootstrap_network).2:$RPC_PORT 2>&1 | tee $logfile " &
   for i in $(seq $N); do
 
   	logfile="$DIR/logs/node-$i.log"
-  	docker run --network node$i-network --cap-add=NET_ADMIN --name node$i --mount type=bind,source=/home/sergi/workspace/go-ethereum/discv5-test,target=/go-ethereum/discv5-test devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --addr $(get_node_network $i).2:$PORT --rpc $(get_node_network $i).2:$RPC_PORT 2>&1 > $logfile " &
+  	docker run --network node$i-network --cap-add=NET_ADMIN --name node$i --mount type=bind,source=$PWD/$DIR,target=/go-ethereum/$DIR devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --addr $(get_node_network $i).2:$PORT --rpc $(get_node_network $i).2:$RPC_PORT 2>&1 | tee $logfile " &
 	sleep 1
   done	  
 
