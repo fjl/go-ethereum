@@ -10,6 +10,9 @@ fi
 
 DIR=discv5-test
 
+MIN_LATENCY_MS=10
+MAX_LATENCY_MS=100
+
 PORT=32000
 RPC_PORT=22000
 export COMPOSE_PARALLEL_LIMIT=1000
@@ -63,6 +66,16 @@ start_nodes() {
 
 }
 
+config_network() {
+
+  docker exec bootstrap-node sh -c "tc qdisc add dev eth0 root netem delay $(($MIN_LATENCY_MS + $RANDOM % $MAX_LATENCY_MS))ms" &
+  for i in $(seq $N); do
+  	docker exec node$i sh -c "tc qdisc add dev eth0 root netem delay $(($MIN_LATENCY_MS + $RANDOM % $MAX_LATENCY_MS))ms" &
+        sleep 1
+  done
+
+}
+
 cleanup() {
     docker stop bootstrap-node
     docker rm bootstrap-node 
@@ -74,10 +87,6 @@ cleanup() {
     done	    
 }
 
-#trap cleanup EXIT
-#trap 'kill $(jobs -p)' EXIT
-
-
 start_network
 
 sudo iptables --flush DOCKER-ISOLATION-STAGE-1
@@ -85,6 +94,6 @@ sudo iptables --flush DOCKER-ISOLATION-STAGE-1
 trap cleanup EXIT
 
 start_nodes
+config_network
 
-#cleanup
 wait
