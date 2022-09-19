@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-
-DNSLISTPATH="/home/sergi/workspace/eth-dns-list-parser/target"
-DNSLISTEXE="java -cp $DNSLISTPATH/discv4-dnslist-parser-0.0.1-SNAPSHOT.jar  network.datahop.DnsListParser"
+#DNSLISTPATH="/home/sergi/workspace/eth-dns-list-parser/target"
+#DNSLISTEXE="java -cp $DNSLISTPATH/discv4-dnslist-parser-0.0.1-SNAPSHOT.jar  network.datahop.DnsListParser"
 
 nets=()
 
@@ -66,12 +65,6 @@ start_bootstrap_node() {
   logfile="$DIR/logs/node-0.log"
   
   docker run --network bootstrap-network --cap-add=NET_ADMIN --name bootstrap-node --mount type=bind,source=$PWD/discv5-test,target=/go-ethereum/$DIR devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --nodekey 7fbc0a865aad6ff63baf1d16e62c07e6cc7427d1f1fc99081af758d6aa27175b --addr $(get_bootstrap_network).2:$PORT --rpc $(get_bootstrap_network).2:$RPC_PORT 2>&1 | tee $logfile " &
-#  for i in $(seq $N); do
-
-#  	logfile="$DIR/logs/node-$i.log"
-#  	docker run --network node$i-network --cap-add=NET_ADMIN --name node$i --mount type=bind,source=$PWD/$DIR,target=/go-ethereum/$DIR devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --addr $(get_node_network $i).2:$PORT --rpc $(get_node_network $i).2:$RPC_PORT 2>&1 | tee $logfile " &
-#	sleep 1
-#  done	  
 
 }
 
@@ -95,7 +88,6 @@ cleanup() {
 	echo "node$i"
 	docker stop node$i
 	docker rm node$i
-#	 docker network rm node$i-network
     done
     for i in "${nets[@]}"
     do
@@ -119,24 +111,19 @@ load_dnslist(){
      if [ $i -eq 0 ];
      then
 	addr=$x
-	#echo $addr
         start_network $addr
 	i=-1
-#	echo $i
      elif [ $i -eq -1 ]; 
      then
         i=$x
-#	echo $i
      else
 	i=$((i-1))
-	echo $x
 	logfile="$DIR/logs/node-$n.log"
 	n=$((n+1))
         docker run --network network-$addr.0 --ip $x --cap-add=NET_ADMIN --name node$n --mount type=bind,source=$PWD/$DIR,target=/go-ethereum/$DIR devp2p sh -c "./devp2p --verbosity 5 discv5 listen --bootnodes enode://582299339f1800f3ff3238ca8772b85543b5f5d4c1fab8d0a00c274a7bcf2cccb02ea72d250ee22b912d006b5a170c15c648cc2476d738baabb8519da7a7bd70@$(get_bootstrap_network).2:0?discport=$PORT --addr $x:$PORT --rpc $x:$RPC_PORT 2>&1 | tee $logfile " &
 	nets+=(network-$addr.0)
      fi
   done;
-#  echo $output | awk '{for(i=1;i<=NF;i++) print $i;}'
 
 }
 
@@ -148,9 +135,5 @@ load_dnslist
 
 trap cleanup EXIT
 
-#start_nodes
-#config_network
-
-#load_dnslist
 
 wait
