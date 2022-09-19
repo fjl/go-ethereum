@@ -16,7 +16,7 @@ import scipy.stats as ss
 def_run_script = 'run-network.sh'
 def_url_prefix = 'http://localhost'
 request_rate = 10  # request rate per second
-num_topics = 5
+num_topics = 1
 zipf_exponent = 1.0
 ID = 0
 
@@ -51,6 +51,7 @@ def send_register(node, topic, config):
         "jsonrpc": "2.0",
         "id": gen_id(),
     }
+    print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
@@ -125,7 +126,7 @@ class DiscreteDist(object):
         rv = random.random()
         # This operation performs binary search over the CDF to return the
         # random value. Worst case time complexity is O(log2(n))
-        return int(np.searchsorted(self._cdf, rv) + 1)
+        return int(np.searchsorted(self._cdf, rv))
 
 class TruncatedZipfDist(DiscreteDist):
     """Implements a truncated Zipf distribution, i.e. a Zipf distribution with
@@ -187,22 +188,23 @@ def register_topics(zipf, config):
 def search_topics(zipf, config, node_to_topic):
     nodes = list(range(1, config['num_nodes'] + 1))
     node = random.choice(nodes)
-    topic = node_to_topic[node]
     nodes = list(range(1, config['num_nodes'] + 1))
 
     for node in nodes:
+        topic = node_to_topic[node]
         send_lookup(node, topic, config)
 
 def send_lookup(node, topic, config):
     topic_digest = get_topic_digest(topic)
     payload = {
-        "method": "discv5_topicNodes",
-        "params": [topic_digest],
+        "method": "discv5_topicSearch",
+        "params": [topic_digest, 1],
         "jsonrpc": "2.0",
         "id": gen_id(),
     }
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
+    print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
     print('Lookup response: ', resp)
 
@@ -221,6 +223,8 @@ def main():
     zipf = TruncatedZipfDist(zipf_exponent, num_topics)
 
     node_to_topic = register_topics(zipf, config)
+    #wait for registrations to complete
+    time.sleep(10)
     search_topics(zipf, config, node_to_topic)
     
     #assert response["result"] == "echome!"
