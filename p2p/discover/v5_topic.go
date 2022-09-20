@@ -380,7 +380,7 @@ func (s *topicSearch) run() {
 		// Queries.
 		case queryCh <- queryTarget:
 		case resp := <-s.queryRespCh:
-			for n := range resp.nodes {
+			for _, n := range resp.nodes {
 				s.resultFeed.Send(n)
 			}
 			state.AddResults(resp.src, resp.nodes)
