@@ -301,6 +301,7 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID) *topicSearch {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &topicSearch{
+		topic:  topic,
 		config: sys.config,
 		quit:   make(chan struct{}),
 
