@@ -132,7 +132,7 @@ type (
 	// TOPICQUERY asks for nodes with the given topic.
 	TopicQuery struct {
 		ReqID []byte
-		Topic []byte
+		Topic [32]byte
 	}
 )
 

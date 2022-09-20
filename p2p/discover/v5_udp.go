@@ -41,6 +41,7 @@ import (
 const (
 	lookupRequestLimit      = 3  // max requests against a single node during lookup
 	findnodeResultLimit     = 16 // applies in FINDNODE handler
+	topicNodesResultLimit   = 16 // applies in TOPICQUERY handler
 	totalNodesResponseLimit = 5  // applies in waitForNodes
 	nodesResponseItemLimit  = 3  // applies in sendNodes
 
@@ -435,7 +436,7 @@ func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []
 
 // topicQuery sends TOPICQUERY and waits for one or more NODES responses.
 func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID) ([]*enode.Node, error) {
-	req := &v5wire.TopicQuery{Topic: topic[:]}
+	req := &v5wire.TopicQuery{Topic: topic}
 	resp := t.call(n, v5wire.NodesMsg, req)
 	return t.waitForNodes(resp, nil)
 }
@@ -807,6 +808,8 @@ func (t *UDPv5) handle(p v5wire.Packet, fromID enode.ID, fromAddr *net.UDPAddr) 
 		t.handleCallResponse(fromID, fromAddr, p)
 	case *v5wire.Regtopic:
 		t.handleRegtopic(fromID, fromAddr, p)
+	case *v5wire.TopicQuery:
+		t.handleTopicQuery(fromID, fromAddr, p)
 	case *v5wire.Regconfirmation:
 		t.handleCallResponse(fromID, fromAddr, p)
 	}
@@ -916,6 +919,27 @@ func (t *UDPv5) collectTableNodes(rip net.IP, distances []uint, limit int) []*en
 		}
 	}
 	return nodes
+}
+
+// handleTopicQuery serves TOPICQUERY messages.
+func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TopicQuery) {
+	// Get matching nodes from the topic table.
+	nodes := t.topicTable.Nodes(p.Topic)
+	var result []*enode.Node
+	for _, n := range nodes {
+		if len(result) >= topicNodesResultLimit {
+			break
+		}
+		if netutil.CheckRelayIP(fromAddr.IP, n.IP()) != nil {
+			continue // skip unrelayable nodes
+		}
+		result = append(result, n)
+	}
+
+	// Send NODES responses.
+	for _, resp := range packNodes(p.ReqID, result) {
+		t.sendResponse(fromID, fromAddr, resp)
+	}
 }
 
 // packNodes creates NODES response packets for the given node list.

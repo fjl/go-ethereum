@@ -629,6 +629,10 @@ func TestUDPv5_PingWithIPV4MappedAddress(t *testing.T) {
 	<-done
 }
 
+func TestUDPv5TopicQuery(t *testing.T) {
+
+}
+
 // udpV5Test is the framework for all tests above.
 // It runs the UDPv5 transport on a virtual socket and allows testing outgoing packets.
 type udpV5Test struct {
