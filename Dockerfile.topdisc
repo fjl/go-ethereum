@@ -14,7 +14,7 @@ RUN cd /go-ethereum && go build ./cmd/devp2p
 #RUN cd /go-ethereum && /bin/sh ./run-network.sh 1
 WORKDIR /go-ethereum
 RUN ./devp2p key generate node.key
-EXPOSE 8545 8546 30303 30303/udp
+EXPOSE 8545 8546 20200 30200/udp
 #uncomment and add here a command to run the topdisc node
 #CMD /go-ethereum/devp2p --verbosity 5 discv5 listen
 #ENTRYPOINT ["app", "arg1", "arg2"]
