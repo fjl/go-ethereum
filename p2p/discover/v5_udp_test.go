@@ -232,6 +232,29 @@ func (test *udpV5Test) expectNodes(wantReqID []byte, wantTotal uint8, wantNodes 
 	}
 }
 
+// This test checks that incoming TOPICQUERY calls are handled correctly.
+func TestUDPv5_topicqueryHandling(t *testing.T) {
+	t.Parallel()
+	test := newUDPV5Test(t)
+	defer test.close()
+
+	// Create test nodes and insert them into the table.
+	topic1 := topicindex.TopicID{1, 1, 1, 1}
+	topic2 := topicindex.TopicID{9, 9, 9, 9}
+	nodes := nodesAtDistance(test.table.self().ID(), 256, 10)
+	for _, n := range nodes {
+		test.udp.topicTable.Add(n, topic2)
+	}
+
+	// There are no available nodes for topic1, so it gets an empty response.
+	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{0}, Topic: topic1})
+	test.expectNodes([]byte{0}, 1, []*enode.Node{})
+
+	// The nodes for topic2 should be returned.
+	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{1}, Topic: topic2})
+	test.expectNodes([]byte{1}, 4, nodes)
+}
+
 // This test checks that outgoing PING calls work.
 func TestUDPv5_pingCall(t *testing.T) {
 	t.Parallel()
@@ -325,6 +348,52 @@ func TestUDPv5_findnodeCall(t *testing.T) {
 
 	// TODO: check invalid IPs
 	// TODO: check invalid/unsigned record
+}
+
+// This test checks that outgoing TOPICQUERY calls work.
+func TestUDPv5_topicqueryCall(t *testing.T) {
+	t.Parallel()
+	test := newUDPV5Test(t)
+	defer test.close()
+
+	// Launch the request:
+	var (
+		topic    = topicindex.TopicID{1, 1, 1, 1}
+		remote   = test.getNode(test.remotekey, test.remoteaddr).Node()
+		nodes    = nodesAtDistance(remote.ID(), 256, 8)
+		done     = make(chan error, 1)
+		response []*enode.Node
+	)
+	go func() {
+		var err error
+		response, err = test.udp.topicQuery(remote, topic)
+		done <- err
+	}()
+
+	// Serve the responses:
+	test.waitPacketOut(func(p *v5wire.TopicQuery, addr *net.UDPAddr, _ v5wire.Nonce) {
+		if p.Topic != topic {
+			t.Fatalf("wrong topic in request: %v", p.Topic)
+		}
+		test.packetIn(&v5wire.Nodes{
+			ReqID: p.ReqID,
+			Total: 2,
+			Nodes: nodesToRecords(nodes[:4]),
+		})
+		test.packetIn(&v5wire.Nodes{
+			ReqID: p.ReqID,
+			Total: 2,
+			Nodes: nodesToRecords(nodes[4:]),
+		})
+	})
+
+	// Check results:
+	if err := <-done; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(response, nodes) {
+		t.Fatalf("wrong nodes in response")
+	}
 }
 
 // This test checks that pending calls are re-sent when a handshake happens.
@@ -628,29 +697,6 @@ func TestUDPv5_PingWithIPV4MappedAddress(t *testing.T) {
 		}
 	})
 	<-done
-}
-
-// This test checks that incoming TOPICQUERY calls are handled correctly.
-func TestUDPv5_topicqueryHandling(t *testing.T) {
-	t.Parallel()
-	test := newUDPV5Test(t)
-	defer test.close()
-
-	// Create test nodes and insert them into the table.
-	topic1 := topicindex.TopicID{1, 1, 1, 1}
-	topic2 := topicindex.TopicID{9, 9, 9, 9}
-	nodes := nodesAtDistance(test.table.self().ID(), 256, 10)
-	for _, n := range nodes {
-		test.udp.topicTable.Add(n, topic2)
-	}
-
-	// There are no available nodes for topic1, so it gets an empty response.
-	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{0}, Topic: topic1})
-	test.expectNodes([]byte{0}, 1, []*enode.Node{})
-
-	// The nodes for topic2 should be returned.
-	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{1}, Topic: topic2})
-	test.expectNodes([]byte{1}, 4, nodes)
 }
 
 // udpV5Test is the framework for all tests above.
