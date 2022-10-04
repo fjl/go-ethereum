@@ -351,6 +351,7 @@ func (s *topicSearch) run() {
 		// Loop exit.
 		case <-s.quit:
 			s.lookupCancel()
+			close(s.lookupCh)
 			close(s.queryCh)
 			// Drain result channel. This guarantees that, when the iterator's
 			// Close is done, Next will always return false.
