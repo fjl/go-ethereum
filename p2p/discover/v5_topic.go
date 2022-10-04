@@ -266,7 +266,7 @@ type topicSearch struct {
 
 	lookupCtx     context.Context
 	lookupCancel  context.CancelFunc
-	lookupTarget  chan enode.ID
+	lookupCh      chan enode.ID
 	lookupResults chan []*enode.Node
 }
 
@@ -292,7 +292,7 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.
 		// lookup
 		lookupCtx:     ctx,
 		lookupCancel:  cancel,
-		lookupTarget:  make(chan enode.ID),
+		lookupCh:      make(chan enode.ID),
 		lookupResults: make(chan []*enode.Node, 1),
 	}
 	s.wg.Add(3)
@@ -352,19 +352,17 @@ func (s *topicSearch) run() {
 		case <-s.quit:
 			s.lookupCancel()
 			close(s.queryCh)
-
 			// Drain result channel. This guarantees that, when the iterator's
 			// Close is done, Next will always return false.
 			close(s.resultCh)
 			for range s.resultCh {
 			}
-
 			return
 
 		// Lookup management.
 		case <-lookupEv.C():
 			lookupTarget = state.LookupTarget()
-			lookupCh = s.lookupTarget
+			lookupCh = s.lookupCh
 
 		case lookupCh <- lookupTarget:
 		case nodes := <-s.lookupResults:
@@ -389,7 +387,7 @@ func (s *topicSearch) run() {
 func (s *topicSearch) runLookups(sys *topicSystem) {
 	defer s.wg.Done()
 
-	for target := range s.lookupTarget {
+	for target := range s.lookupCh {
 		l := sys.transport.newLookup(s.lookupCtx, target)
 		// Note: here, only the final results (i.e. closest to target) are taken.
 		nodes := l.run()
@@ -432,13 +430,9 @@ func newTopicSearchIterator(sys *topicSystem, search *topicSearch, ch <-chan *en
 }
 
 func (tsi *topicSearchIterator) Next() bool {
-	select {
-	case n, ok := <-tsi.ch:
-		tsi.cur = n
-		return ok
-	case <-tsi.search.quit:
-		return false
-	}
+	n, ok := <-tsi.ch
+	tsi.cur = n
+	return ok
 }
 
 func (tsi *topicSearchIterator) Node() *enode.Node {
@@ -446,7 +440,5 @@ func (tsi *topicSearchIterator) Node() *enode.Node {
 }
 
 func (tsi *topicSearchIterator) Close() {
-	tsi.closing.Do(func() {
-		tsi.search.stop()
-	})
+	tsi.closing.Do(tsi.search.stop)
 }
