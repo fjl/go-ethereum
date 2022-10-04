@@ -42,10 +42,10 @@ func TestSearchBuckets(t *testing.T) {
 		close5  = nodesAtDistance(enode.ID(topic1), 5, 1)
 		close20 = nodesAtDistance(enode.ID(topic1), 20, 1)
 	)
-	s.AddNodes(far256)
-	s.AddNodes(far255)
-	s.AddNodes(close5)
-	s.AddNodes(close20)
+	s.AddLookupNodes(far256)
+	s.AddLookupNodes(far255)
+	s.AddLookupNodes(close5)
+	s.AddLookupNodes(close20)
 
 	last := len(s.buckets) - 1
 	if !sbContainsAll(s.buckets[0], far256) {
@@ -80,7 +80,7 @@ func TestSearchResultsTracking(t *testing.T) {
 		src   = enode.SignNull(new(enr.Record), enode.ID{})
 		nodes = nodesAtDistance(src.ID(), 256, 10)
 	)
-	s.AddResults(src, nodes)
+	s.AddQueryResults(src, nodes)
 
 	for i, n := range nodes {
 		result := s.PeekResult()

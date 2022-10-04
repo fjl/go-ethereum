@@ -370,7 +370,7 @@ func (s *topicSearch) run() {
 
 		case lookupCh <- lookupTarget:
 		case nodes := <-s.lookupResults:
-			state.AddNodes(nodes)
+			state.AddLookupNodes(nodes)
 			lookupCh = nil
 
 		// Queries.
@@ -379,7 +379,7 @@ func (s *topicSearch) run() {
 			if resp.err != nil {
 				s.config.Log.Debug("TOPICQUERY failed", "topic", s.topic, "id", resp.src.ID(), "err", resp.err)
 			}
-			state.AddResults(resp.src, resp.nodes)
+			state.AddQueryResults(resp.src, resp.nodes)
 			queryTarget, queryCh = nil, nil
 
 		// Results.

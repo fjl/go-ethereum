@@ -75,16 +75,6 @@ func NewSearch(topic TopicID, config Config) *Search {
 	return s
 }
 
-// QueryTarget returns a random node to which a topic query should be sent.
-func (s *Search) QueryTarget() *enode.Node {
-	for _, b := range s.buckets {
-		for _, n := range b.new {
-			return n
-		}
-	}
-	return nil
-}
-
 // IsDone reports whether the search table is saturated. When it returns true,
 // this search state should be abandoned and a new search started using a
 // fresh Search instance.
@@ -133,8 +123,31 @@ func (s *Search) LookupTarget() enode.ID {
 	return center
 }
 
-// AddResults adds the response nodes for a topic query to the table.
-func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
+// AddLookupNodes adds the results of a lookup to the table.
+func (s *Search) AddLookupNodes(nodes []*enode.Node) {
+	for _, n := range nodes {
+		if n.ID() == s.self {
+			continue
+		}
+		b := s.bucket(n.ID())
+		if b.count() < searchBucketNodes {
+			b.add(n)
+		}
+	}
+}
+
+// QueryTarget returns a random node to which a topic query should be sent.
+func (s *Search) QueryTarget() *enode.Node {
+	for _, b := range s.buckets {
+		for _, n := range b.new {
+			return n
+		}
+	}
+	return nil
+}
+
+// AddQueryResults adds the response nodes for a topic query to the table.
+func (s *Search) AddQueryResults(from *enode.Node, results []*enode.Node) {
 	b := s.bucket(from.ID())
 	b.setAsked(from)
 
@@ -163,19 +176,6 @@ func (s *Search) PopResult() {
 		panic("PopResult with len(results) == 0")
 	}
 	s.resultBuffer = append(s.resultBuffer[:0], s.resultBuffer[1:]...)
-}
-
-// AddNodes adds the results of a lookup to the table.
-func (s *Search) AddNodes(nodes []*enode.Node) {
-	for _, n := range nodes {
-		if n.ID() == s.self {
-			continue
-		}
-		b := s.bucket(n.ID())
-		if b.count() < searchBucketNodes {
-			b.add(n)
-		}
-	}
 }
 
 func (s *Search) bucket(id enode.ID) *searchBucket {
