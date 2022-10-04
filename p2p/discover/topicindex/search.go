@@ -42,6 +42,8 @@ type Search struct {
 
 	// Note: search buckets are ordered far -> close.
 	buckets [searchTableDepth]searchBucket
+
+	results []*enode.Node
 }
 
 type searchBucket struct {
@@ -119,7 +121,27 @@ func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
 	b.setAsked(from)
 	b.numResults += len(results)
 
+	s.results = append(s.results, results...)
+
 	// TODO: track failures also
+}
+
+// PeekResult returns a node from the result set.
+// When no result is available, it returns nil.
+func (s *Search) PeekResult() *enode.Node {
+	if len(s.results) > 0 {
+		return s.results[0]
+	}
+	return nil
+}
+
+// PopResult removes a result node.
+func (s *Search) PopResult() {
+	if len(s.results) == 0 {
+		// shouldn't happen
+		panic("PopResult with len(results) == 0")
+	}
+	s.results = append(s.results, s.results[1:]...)
 }
 
 // AddNodes adds the results of a lookup to the table.

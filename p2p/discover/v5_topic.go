@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -86,24 +85,9 @@ func (sys *topicSystem) newSearchIterator(topic topicindex.TopicID) enode.Iterat
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 
-	s, _ := sys.search[topic]
-	if s == nil {
-		s = newTopicSearch(sys, topic)
-		sys.search[topic] = s
-	}
-	s.refcount++
-	return newTopicSearchIterator(sys, s)
-}
-
-func (sys *topicSystem) iteratorClosed(s *topicSearch) {
-	sys.mu.Lock()
-	defer sys.mu.Unlock()
-
-	s.refcount--
-	if s.refcount == 0 {
-		// Last iterator of this search was closed.
-		s.stop()
-	}
+	resultCh := make(chan *enode.Node, 200)
+	s := newTopicSearch(sys, topic, resultCh)
+	return newTopicSearchIterator(sys, s, resultCh)
 }
 
 // topicReg handles registering for a single topic.
@@ -272,23 +256,18 @@ type topicSearch struct {
 	topic  topicindex.TopicID
 	config topicindex.Config
 
-	resultScope event.SubscriptionScope
-	resultFeed  event.Feed
-
 	wg   sync.WaitGroup
 	quit chan struct{}
 
 	queryCh     chan *enode.Node
 	queryRespCh chan topicQueryResp
 
+	resultCh chan *enode.Node
+
 	lookupCtx     context.Context
 	lookupCancel  context.CancelFunc
 	lookupTarget  chan enode.ID
 	lookupResults chan []*enode.Node
-
-	// This tracks how many iterators are subscribed to this search.
-	// Access to this field is guarded by topicSystem.mu.
-	refcount int
 }
 
 type topicQueryResp struct {
@@ -297,13 +276,14 @@ type topicQueryResp struct {
 	err   error
 }
 
-func newTopicSearch(sys *topicSystem, topic topicindex.TopicID) *topicSearch {
+func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.Node) *topicSearch {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &topicSearch{
-		topic:  topic,
-		config: sys.config,
-		quit:   make(chan struct{}),
+		topic:    topic,
+		config:   sys.config,
+		quit:     make(chan struct{}),
+		resultCh: out,
 
 		// query
 		queryCh:     make(chan *enode.Node),
@@ -322,12 +302,7 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID) *topicSearch {
 	return s
 }
 
-func (s *topicSearch) subscribeResults(ch chan<- *enode.Node) event.Subscription {
-	return s.resultScope.Track(s.resultFeed.Subscribe(ch))
-}
-
 func (s *topicSearch) stop() {
-	s.resultScope.Close()
 	close(s.quit)
 	s.wg.Wait()
 }
@@ -340,6 +315,8 @@ func (s *topicSearch) run() {
 		lookupEv    = mclock.NewAlarm(s.config.Clock)
 		queryCh     chan<- *enode.Node
 		queryTarget *enode.Node
+		resultCh    chan<- *enode.Node
+		result      *enode.Node
 	)
 
 	for {
@@ -360,12 +337,24 @@ func (s *topicSearch) run() {
 				queryTarget = t
 			}
 		}
+		// Dispatch result when available.
+		if n := state.PeekResult(); n != nil {
+			result = n
+			resultCh = s.resultCh
+		}
 
 		select {
 		// Loop exit.
 		case <-s.quit:
 			s.lookupCancel()
 			close(s.queryCh)
+
+			// Drain result channel. This guarantees that, when the iterator's
+			// Close is done, Next will always return false.
+			close(s.resultCh)
+			for range s.resultCh {
+			}
+
 			return
 
 		// Lookup management.
@@ -380,11 +369,13 @@ func (s *topicSearch) run() {
 		// Queries.
 		case queryCh <- queryTarget:
 		case resp := <-s.queryRespCh:
-			for _, n := range resp.nodes {
-				s.resultFeed.Send(n)
-			}
 			state.AddResults(resp.src, resp.nodes)
-			queryTarget = nil
+			queryTarget, queryCh = nil, nil
+
+		// Results.
+		case resultCh <- result:
+			state.PopResult()
+			result, resultCh = nil, nil
 		}
 	}
 }
@@ -424,47 +415,33 @@ func (s *topicSearch) runRequests(sys *topicSystem) {
 // topicSearchIterator implements enode.Iterator. It is an iterator
 // that returns nodes found by topic search.
 type topicSearchIterator struct {
-	sys    *topicSystem
-	search *topicSearch
-
-	sub     event.Subscription
-	ch      chan *enode.Node
+	sys     *topicSystem
+	search  *topicSearch
+	ch      <-chan *enode.Node
 	closing sync.Once
-
-	node *enode.Node
+	cur     *enode.Node
 }
 
-func newTopicSearchIterator(sys *topicSystem, search *topicSearch) *topicSearchIterator {
-	ch := make(chan *enode.Node, 200)
-	sub := search.subscribeResults(ch)
-	return &topicSearchIterator{sys: sys, search: search, sub: sub, ch: ch}
+func newTopicSearchIterator(sys *topicSystem, search *topicSearch, ch <-chan *enode.Node) *topicSearchIterator {
+	return &topicSearchIterator{sys: sys, search: search, ch: ch}
 }
 
 func (tsi *topicSearchIterator) Next() bool {
 	select {
 	case n, ok := <-tsi.ch:
-		tsi.node = n
+		tsi.cur = n
 		return ok
-	case <-tsi.sub.Err():
-		// This case activates when topicSearch is stopped.
-		tsi.Close()
+	case <-tsi.search.quit:
 		return false
 	}
 }
 
 func (tsi *topicSearchIterator) Node() *enode.Node {
-	return tsi.node
+	return tsi.cur
 }
 
 func (tsi *topicSearchIterator) Close() {
 	tsi.closing.Do(func() {
-		tsi.sys.iteratorClosed(tsi.search)
-		tsi.sub.Unsubscribe()
-		close(tsi.ch)
-
-		// Drain tsi.ch. This guarantees that, when Close is done,
-		// Next will always return false.
-		for range tsi.ch {
-		}
+		tsi.search.stop()
 	})
 }
