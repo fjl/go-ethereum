@@ -97,6 +97,10 @@ func (s *Search) IsDone() bool {
 	//   - closest nodes reached (requires improved lookup tracking)
 	//   - buckets fuller than X
 
+	// The search cannot be done while there are unused results in the buffer.
+	if len(s.resultBuffer) > 0 {
+		return false
+	}
 	// The search is considered 'not done' while there are still
 	// nodes that could be asked.
 	for _, b := range s.buckets {
@@ -104,7 +108,8 @@ func (s *Search) IsDone() bool {
 			return false
 		}
 	}
-	//
+	// No unasked nodes remain, consider the search done when
+	// at least one node was asked.
 	return s.anyAsked
 }
 
