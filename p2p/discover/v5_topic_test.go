@@ -26,9 +26,7 @@ import (
 
 func TestTopicReg(t *testing.T) {
 	bootnode := startLocalhostV5(t, Config{})
-	client := startLocalhostV5(t, Config{
-		Bootnodes: []*enode.Node{bootnode.Self()},
-	})
+	client := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
 
 	client.RegisterTopic(topicindex.TopicID{})
 
@@ -38,4 +36,25 @@ func TestTopicReg(t *testing.T) {
 	if len(reg) != 1 || reg[0].ID() != client.localNode.ID() {
 		t.Fatal("not registered")
 	}
+}
+
+// This is an end-to-end test of topic search.
+func TestTopicSearch(t *testing.T) {
+	topic := topicindex.TopicID{1, 1, 1, 1}
+
+	// Create network of four nodes.
+	bootnode := startLocalhostV5(t, Config{})
+	node1 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
+	node2 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
+	node3 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
+
+	// Add registrations of two other nodes in the topic table of node1.
+	node1.topicTable.Add(bootnode.Self(), topic)
+	node1.topicTable.Add(node3.Self(), topic)
+
+	// Attempt to discover the registrations from yet another node.
+	it := node2.TopicSearch(topic)
+	defer it.Close()
+	nodes := enode.ReadNodes(it, 2)
+	t.Log("found nodes:", nodes)
 }
