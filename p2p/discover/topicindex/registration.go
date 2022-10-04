@@ -43,6 +43,7 @@ type Registration struct {
 	clock mclock.Clock
 	log   log.Logger
 	topic TopicID
+	self  enode.ID
 
 	// Note: registration buckets are ordered close -> far.
 	buckets [regTableDepth]regBucket
@@ -86,6 +87,7 @@ func NewRegistration(topic TopicID, config Config) *Registration {
 	config = config.withDefaults()
 	r := &Registration{
 		topic:   topic,
+		self:    config.Self,
 		clock:   config.Clock,
 		log:     config.Log.New("topic", topic),
 		timeout: config.RegAttemptTimeout,
@@ -119,6 +121,9 @@ func (r *Registration) LookupTarget() enode.ID {
 func (r *Registration) AddNodes(nodes []*enode.Node) {
 	for _, n := range nodes {
 		id := n.ID()
+		if id == r.self {
+			continue
+		}
 		b := r.bucket(id)
 		attempt, ok := b.att[id]
 		if ok {
