@@ -311,12 +311,14 @@ func (s *topicSearch) run() {
 	defer s.wg.Done()
 
 	var (
-		state       = topicindex.NewSearch(s.topic, s.config)
-		lookupEv    = mclock.NewAlarm(s.config.Clock)
-		queryCh     chan<- *enode.Node
-		queryTarget *enode.Node
-		resultCh    chan<- *enode.Node
-		result      *enode.Node
+		state        = topicindex.NewSearch(s.topic, s.config)
+		lookupEv     = mclock.NewAlarm(s.config.Clock)
+		lookupCh     chan enode.ID
+		lookupTarget enode.ID
+		queryCh      chan<- *enode.Node
+		queryTarget  *enode.Node
+		resultCh     chan<- *enode.Node
+		result       *enode.Node
 	)
 
 	for {
@@ -325,9 +327,11 @@ func (s *topicSearch) run() {
 			state = topicindex.NewSearch(s.topic, s.config)
 		}
 		// Schedule lookups.
-		next := state.NextLookupTime()
-		if next != topicindex.Never {
-			lookupEv.Schedule(next)
+		if lookupCh == nil {
+			next := state.NextLookupTime()
+			if next != topicindex.Never {
+				lookupEv.Schedule(next)
+			}
 		}
 		// Ensure there is always one query running.
 		if queryTarget == nil {
@@ -359,12 +363,13 @@ func (s *topicSearch) run() {
 
 		// Lookup management.
 		case <-lookupEv.C():
-			select {
-			case s.lookupTarget <- state.LookupTarget():
-			case <-s.quit:
-			}
+			lookupTarget = state.LookupTarget()
+			lookupCh = s.lookupTarget
+
+		case lookupCh <- lookupTarget:
 		case nodes := <-s.lookupResults:
 			state.AddNodes(nodes)
+			lookupCh = nil
 
 		// Queries.
 		case queryCh <- queryTarget:
