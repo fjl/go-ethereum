@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
 func TestSearchLookups(t *testing.T) {
@@ -29,6 +30,8 @@ func TestSearchLookups(t *testing.T) {
 	t.Log(s.LookupTarget())
 }
 
+// This checks that search buckets are filled correctly
+// with nodes at various distances.
 func TestSearchBuckets(t *testing.T) {
 	config := testConfig(t)
 	s := NewSearch(topic1, config)
@@ -66,4 +69,24 @@ func sbContainsAll(b searchBucket, nodes []*enode.Node) bool {
 		}
 	}
 	return true
+}
+
+// This checks (de)queueing of topic search results.
+func TestSearchResultsTracking(t *testing.T) {
+	config := testConfig(t)
+	s := NewSearch(topic1, config)
+
+	var (
+		src   = enode.SignNull(new(enr.Record), enode.ID{})
+		nodes = nodesAtDistance(src.ID(), 256, 10)
+	)
+	s.AddResults(src, nodes)
+
+	for i, n := range nodes {
+		result := s.PeekResult()
+		if result.ID() != n.ID() {
+			t.Logf("wrong result %d: got %v, want %v", i, result.ID(), n.ID())
+		}
+		s.PopResult()
+	}
 }
