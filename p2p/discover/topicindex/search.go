@@ -40,6 +40,9 @@ type Search struct {
 	log   log.Logger
 	topic TopicID
 
+	anyAsked   bool
+	numResults int
+
 	// Note: search buckets are ordered far -> close.
 	buckets [searchTableDepth]searchBucket
 
@@ -93,7 +96,16 @@ func (s *Search) IsDone() bool {
 	//   - results from n sources received
 	//   - closest nodes reached (requires improved lookup tracking)
 	//   - buckets fuller than X
-	return false
+
+	// The search is considered 'not done' while there are still
+	// nodes that could be asked.
+	for _, b := range s.buckets {
+		if len(b.new) > 0 {
+			return false
+		}
+	}
+	//
+	return s.anyAsked
 }
 
 // NextLookupTime returns when the next lookup operation should start.
@@ -120,6 +132,7 @@ func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
 	b := s.bucket(from.ID())
 	b.setAsked(from)
 	b.numResults += len(results)
+	s.anyAsked = true
 
 	s.results = append(s.results, results...)
 
