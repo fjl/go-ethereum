@@ -43,13 +43,18 @@ func TestTopicSearch(t *testing.T) {
 	topic := topicindex.TopicID{1, 1, 1, 1}
 
 	// Create network of four nodes.
-	bootnode := startLocalhostV5(t, Config{})
-	node1 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
-	node2 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
-	node3 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
+	node0 := startLocalhostV5(t, Config{})
+	node1 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{node0.Self()}})
+	node2 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{node0.Self()}})
+	node3 := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{node0.Self()}})
+	defer func() {
+		for _, node := range []*UDPv5{node0, node1, node2, node3} {
+			node.Close()
+		}
+	}()
 
 	// Add registrations of two other nodes in the topic table of node1.
-	node1.topicTable.Add(bootnode.Self(), topic)
+	node1.topicTable.Add(node0.Self(), topic)
 	node1.topicTable.Add(node3.Self(), topic)
 
 	// Attempt to discover the registrations from yet another node.
