@@ -376,7 +376,11 @@ func (s *topicSearch) run() {
 		// Queries.
 		case queryCh <- queryTarget:
 		case resp := <-s.queryRespCh:
-			state.AddResults(resp.src, resp.nodes)
+			if resp.err == nil {
+				state.AddResults(resp.src, resp.nodes)
+			} else {
+				s.config.Log.Debug("TOPICQUERY failed", "id", resp.src.ID(), "err", resp.err)
+			}
 			queryTarget, queryCh = nil, nil
 
 		// Results.
