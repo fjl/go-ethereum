@@ -17,6 +17,8 @@
 package topicindex
 
 import (
+	"time"
+
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -32,6 +34,9 @@ const (
 	// Should there be any nodes which are closer than this, they just go into the last
 	// (closest) bucket.
 	searchTableDepth = 40
+
+	// This defines the minimum delay between two lookups started by Search.
+	searchLookupMinDelay = 3 * time.Second
 )
 
 // Search is the state associated with searching for a single topic.
@@ -42,6 +47,9 @@ type Search struct {
 	self  enode.ID
 
 	numResults int
+
+	lastLookupTime         mclock.AbsTime
+	lookupsWithoutNewNodes int
 
 	// Note: search buckets are ordered far -> close.
 	buckets [searchTableDepth]searchBucket
@@ -88,25 +96,29 @@ func (s *Search) IsDone() bool {
 	//   - closest nodes reached (requires improved lookup tracking)
 	//   - buckets fuller than X
 
-	// The search cannot be done while there are unused results in the buffer.
+	// The search cannot be done while there are unused results in the buffer,
+	// or while there are still nodes that could be asked.
 	if len(s.resultBuffer) > 0 {
 		return false
 	}
-	// The search is considered 'not done' while there are still
-	// nodes that could be asked.
 	for _, b := range s.buckets {
 		if len(b.new) > 0 {
 			return false
 		}
 	}
-	// No unasked nodes remain, consider the search done when
-	// at least one node was found.
-	return s.numResults > 0
+	// No unasked nodes remain. Consider it done when the last
+	// two lookups didn't yield any new nodes.
+	return s.lookupsWithoutNewNodes >= 2
 }
 
 // NextLookupTime returns when the next lookup operation should start.
 func (s *Search) NextLookupTime() mclock.AbsTime {
-	return s.clock.Now()
+	now := s.clock.Now()
+	next := s.lastLookupTime.Add(searchLookupMinDelay)
+	if next > now {
+		return next
+	}
+	return now
 }
 
 // LookupTarget returns a suitable target for a DHT lookup.
@@ -125,14 +137,25 @@ func (s *Search) LookupTarget() enode.ID {
 
 // AddLookupNodes adds the results of a lookup to the table.
 func (s *Search) AddLookupNodes(nodes []*enode.Node) {
+	var anyNewNode bool
 	for _, n := range nodes {
 		if n.ID() == s.self {
 			continue
 		}
 		b := s.bucket(n.ID())
+		if !b.contains(n.ID()) {
+			anyNewNode = true
+		}
 		if b.count() < searchBucketNodes {
 			b.add(n)
 		}
+	}
+
+	s.lastLookupTime = s.clock.Now()
+	if !anyNewNode {
+		s.lookupsWithoutNewNodes++
+	} else {
+		s.lookupsWithoutNewNodes = 0
 	}
 }
 
@@ -155,6 +178,7 @@ func (s *Search) AddQueryResults(from *enode.Node, results []*enode.Node) {
 		if n.ID() == s.self {
 			continue
 		}
+		s.log.Debug("Added topic search result", "fromid", from.ID(), "rid", n.ID())
 		b.numResults++
 		s.numResults++
 		s.resultBuffer = append(s.resultBuffer, n)
