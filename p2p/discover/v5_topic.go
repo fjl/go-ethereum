@@ -319,12 +319,15 @@ func (s *topicSearch) run() {
 		queryTarget  *enode.Node
 		resultCh     chan<- *enode.Node
 		result       *enode.Node
+		nresults     int
 	)
 
 	for {
 		// State rollover.
 		if state.IsDone() {
+			s.config.Log.Debug("Topic search rollover", "topic", s.topic, "nres", nresults)
 			state = topicindex.NewSearch(s.topic, s.config)
+			nresults = 0
 		}
 		// Schedule lookups.
 		if lookupCh == nil {
@@ -378,6 +381,7 @@ func (s *topicSearch) run() {
 
 		// Results.
 		case resultCh <- result:
+			nresults++
 			state.PopResult()
 			result, resultCh = nil, nil
 		}
