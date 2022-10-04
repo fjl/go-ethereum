@@ -148,6 +148,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 	cfg = cfg.withDefaults()
 
 	topicConfig := topicindex.Config{
+		Self:  ln.ID(),
 		Log:   cfg.Log,
 		Clock: cfg.Clock,
 	}
