@@ -189,11 +189,7 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int) []*enode.Node {
 	it := api.host.TopicSearch(topicindex.TopicID(topic))
 	defer it.Close()
 
-	var nodes []*enode.Node
-	for it.Next() && len(nodes) < numNodes {
-		nodes = append(nodes, it.Node())
-	}
-	return nodes
+	return enode.ReadNodes(it, numNodes)
 }
 
 func (api *discAPI) LocalNode() *enode.Node {
