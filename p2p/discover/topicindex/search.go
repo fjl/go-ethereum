@@ -41,7 +41,6 @@ type Search struct {
 	topic TopicID
 	self  enode.ID
 
-	anyAsked   bool
 	numResults int
 
 	// Note: search buckets are ordered far -> close.
@@ -111,8 +110,8 @@ func (s *Search) IsDone() bool {
 		}
 	}
 	// No unasked nodes remain, consider the search done when
-	// at least one node was asked.
-	return s.anyAsked
+	// at least one node was found.
+	return s.numResults > 0
 }
 
 // NextLookupTime returns when the next lookup operation should start.
@@ -136,7 +135,6 @@ func (s *Search) LookupTarget() enode.ID {
 
 // AddResults adds the response nodes for a topic query to the table.
 func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
-	s.anyAsked = true
 	b := s.bucket(from.ID())
 	b.setAsked(from)
 
@@ -145,10 +143,9 @@ func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
 			continue
 		}
 		b.numResults++
+		s.numResults++
 		s.resultBuffer = append(s.resultBuffer, n)
 	}
-
-	// TODO: track failures also
 }
 
 // PeekResult returns a node from the result set.
