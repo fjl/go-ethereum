@@ -30,6 +30,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
@@ -629,8 +630,27 @@ func TestUDPv5_PingWithIPV4MappedAddress(t *testing.T) {
 	<-done
 }
 
-func TestUDPv5TopicQuery(t *testing.T) {
+// This test checks that incoming TOPICQUERY calls are handled correctly.
+func TestUDPv5_topicqueryHandling(t *testing.T) {
+	t.Parallel()
+	test := newUDPV5Test(t)
+	defer test.close()
 
+	// Create test nodes and insert them into the table.
+	topic1 := topicindex.TopicID{1, 1, 1, 1}
+	topic2 := topicindex.TopicID{9, 9, 9, 9}
+	nodes := nodesAtDistance(test.table.self().ID(), 256, 10)
+	for _, n := range nodes {
+		test.udp.topicTable.Add(n, topic2)
+	}
+
+	// There are no available nodes for topic1, so it gets an empty response.
+	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{0}, Topic: topic1})
+	test.expectNodes([]byte{0}, 1, []*enode.Node{})
+
+	// The nodes for topic2 should be returned.
+	test.packetIn(&v5wire.TopicQuery{ReqID: []byte{1}, Topic: topic2})
+	test.expectNodes([]byte{1}, 4, nodes)
 }
 
 // udpV5Test is the framework for all tests above.
