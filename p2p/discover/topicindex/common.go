@@ -22,10 +22,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 // Config is the configuration of the topic system.
 type Config struct {
+	Self enode.ID // the node's own ID
+
 	// Topic table settings.
 	RegLifetime time.Duration
 	TableLimit  int

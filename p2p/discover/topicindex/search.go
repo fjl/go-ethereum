@@ -39,6 +39,7 @@ type Search struct {
 	clock mclock.Clock
 	log   log.Logger
 	topic TopicID
+	self  enode.ID
 
 	anyAsked   bool
 	numResults int
@@ -62,6 +63,7 @@ func NewSearch(topic TopicID, config Config) *Search {
 	s := &Search{
 		clock: config.Clock,
 		log:   config.Log,
+		self:  config.Self,
 		topic: topic,
 	}
 	dist := 256
@@ -120,7 +122,7 @@ func (s *Search) NextLookupTime() mclock.AbsTime {
 
 // LookupTarget returns a suitable target for a DHT lookup.
 //
-// This finds the furthest bucket with no registrations and generates
+// This finds the furthest bucket with no nodes and generates
 // an ID that would fall into the bucket.
 func (s *Search) LookupTarget() enode.ID {
 	center := enode.ID(s.topic)
@@ -134,14 +136,19 @@ func (s *Search) LookupTarget() enode.ID {
 
 // AddResults adds the response nodes for a topic query to the table.
 func (s *Search) AddResults(from *enode.Node, results []*enode.Node) {
+	s.anyAsked = true
 	b := s.bucket(from.ID())
 	b.setAsked(from)
-	b.numResults += len(results)
-	s.anyAsked = true
+
+	for _, n := range results {
+		if n.ID() == s.self {
+			continue
+		}
+		b.numResults++
+		s.resultBuffer = append(s.resultBuffer, n)
+	}
 
 	// TODO: track failures also
-
-	s.resultBuffer = append(s.resultBuffer, results...)
 }
 
 // PeekResult returns a node from the result set.
@@ -164,6 +171,9 @@ func (s *Search) PopResult() {
 // AddNodes adds the results of a lookup to the table.
 func (s *Search) AddNodes(nodes []*enode.Node) {
 	for _, n := range nodes {
+		if n.ID() == s.self {
+			continue
+		}
 		b := s.bucket(n.ID())
 		if b.count() < searchBucketNodes {
 			b.add(n)
