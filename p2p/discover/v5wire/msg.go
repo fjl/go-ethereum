@@ -190,7 +190,7 @@ func (*Pong) Kind() byte               { return PongMsg }
 func (p *Pong) RequestID() []byte      { return p.ReqID }
 func (p *Pong) SetRequestID(id []byte) { p.ReqID = id }
 
-func (*Findnode) Name() string             { return "FINDNODE/v5" }
+func (p *Findnode) Name() string           { return "FINDNODE/v5" }
 func (*Findnode) Kind() byte               { return FindnodeMsg }
 func (p *Findnode) RequestID() []byte      { return p.ReqID }
 func (p *Findnode) SetRequestID(id []byte) { p.ReqID = id }

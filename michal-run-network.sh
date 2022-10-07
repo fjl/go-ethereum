@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-N_NODES=3
+N_NODES=10
 DIR=discv5-test
 
 # make_keys creates all node keys.
@@ -35,7 +35,7 @@ start_nodes() {
         logfile="$DIR/logs/node-$i.log"
         echo "Starting node $i..."
         rm -f "$logfile"
-        ./devp2p --verbosity 5 discv5 listen --bootnodes "$bootnode" --nodekey "$(cat $keyfile)" --addr "127.0.0.1:$port" --rpc "127.0.0.1:$rpc" 2>&1 | tee "$logfile" &
+        ./devp2p --log.json --verbosity 5 discv5 listen --bootnodes "$bootnode" --nodekey "$(cat $keyfile)" --addr "127.0.0.1:$port" --rpc "127.0.0.1:$rpc" 2>&1 | tee "$logfile" &
     done
 }
 

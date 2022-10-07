@@ -2,10 +2,16 @@ import json
 import os
 from dateutil.parser import parse
 import pandas as pd
+import hashlib
 
 log_path = "./discv5-test/logs"
 
 def logs_into_df(log_path):
+    topic_mapping = {} #reverse engineer the topic hash
+    for i in range(1, 100):
+        topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
+
+
     rows = []
     for log_file in os.listdir(log_path):
         print("Reading", log_file)
@@ -37,16 +43,19 @@ def logs_into_df(log_path):
             #we have a key to the message specified
             #currently it can only be the topic
             if(':' in jsons['msg'].split(' ')[1]):
-                row['key'] = jsons['msg'].split(' ')[1].split(':')[1]
+                #replace topic digest by topic name
+                row['key'] = topic_mapping[jsons['msg'].split(' ')[1].split(':')[1]]
             #print(row)
             rows.append(row)
+
+            
             
     return pd.DataFrame(rows)
 
-df = logs_into_df(log_path)
+#df = logs_into_df(log_path)
 
-print(df['msg_type'].value_counts())
-print(df['in_out'].value_counts())
+#print(df['msg_type'].value_counts())
+#print(df['in_out'].value_counts())
 
         
         
