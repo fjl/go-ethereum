@@ -9,33 +9,39 @@ Content-Type: application/json
 
 # Register node 1 in topic
 
+:topic := "0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"
+:operation-id := 111
+
 POST http://localhost:20201/
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_registerTopic", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 99]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_registerTopic", "params": [":topic", :operation-id]}
 
 # Read topic table content of node 2, node 3
 
 POST http://localhost:20202/
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicNodes", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicNodes", "params": [":topic"]}
 
 POST http://localhost:20203/
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicNodes", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicNodes", "params": [":topic"]}
 
 # Stop registering node 1 for topic
 
 POST http://localhost:20201
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_unregisterTopic", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_unregisterTopic", "params": [":topic"]}
 
 # Perform search for topic on node 2
+
+:num-nodes := 1
+:operation-id = 222
 
 POST http://localhost:20202
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 1, 12345]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": [":topic", :num-nodes, :operation-id]}
