@@ -15,7 +15,15 @@ Content-Type: application/json
 POST http://localhost:20201/
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_registerTopic", "params": [":topic", :operation-id]}
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "discv5_registerTopic",
+    "params": [
+        ":topic",
+        :operation-id
+    ]
+}
 
 # Read topic table content of node 2, node 3
 
@@ -44,4 +52,13 @@ Content-Type: application/json
 POST http://localhost:20202
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": [":topic", :num-nodes, :operation-id]}
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "discv5_topicSearch",
+    "params": [
+        ":topic",
+        :num-nodes,
+        :operation-id
+    ]
+}
