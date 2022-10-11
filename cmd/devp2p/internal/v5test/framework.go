@@ -44,6 +44,8 @@ func (p *readError) Unwrap() error       { return p.err }
 func (p *readError) RequestID() []byte   { return nil }
 func (p *readError) SetRequestID([]byte) {}
 
+func (p *readError) AppendLogInfo(ctx []interface{}) []interface{} { return ctx }
+
 // readErrorf creates a readError with the given text.
 func readErrorf(format string, args ...interface{}) *readError {
 	return &readError{fmt.Errorf(format, args...)}
