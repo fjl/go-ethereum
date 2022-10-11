@@ -12,6 +12,9 @@ import collections
 import numpy as np
 import scipy.stats as ss
 
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 # default run script
 def_run_script = 'run-network.sh'
 def_url_prefix = 'http://localhost'
@@ -19,6 +22,8 @@ request_rate = 10  # request rate per second
 num_topics = 1
 zipf_exponent = 1.0
 ID = 0
+processes = []
+
 
 def gen_id():
     global ID
@@ -190,9 +195,11 @@ def search_topics(zipf, config, node_to_topic):
     node = random.choice(nodes)
     nodes = list(range(1, config['num_nodes'] + 1))
 
-    for node in nodes:
-        topic = node_to_topic[node]
-        send_lookup(node, topic, config)
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+        for node in nodes:
+            topic = node_to_topic[node]
+            processes.append(executor.submit(send_lookup,node, topic, config))
+
 
 def send_lookup(node, topic, config):
     topic_digest = get_topic_digest(topic)
