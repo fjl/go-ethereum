@@ -697,13 +697,18 @@ func (t *UDPv5) sendResponse(toID enode.ID, toAddr *net.UDPAddr, packet v5wire.P
 // send sends a packet to the given node.
 func (t *UDPv5) send(toID enode.ID, toAddr *net.UDPAddr, packet v5wire.Packet, c *v5wire.Whoareyou) (v5wire.Nonce, error) {
 	addr := toAddr.String()
+	t.logcontext = append(t.logcontext[:0], "id", toID, "addr", addr)
+	t.logcontext = packet.AppendLogInfo(t.logcontext)
+
 	enc, nonce, err := t.codec.Encode(toID, addr, packet, c)
 	if err != nil {
-		t.log.Warn(">> "+packet.Name(), "id", toID, "addr", addr, "err", err)
+		t.logcontext = append(t.logcontext, "err", err)
+		t.log.Warn(">> "+packet.Name(), t.logcontext...)
 		return nonce, err
 	}
+
 	_, err = t.conn.WriteToUDP(enc, toAddr)
-	t.log.Trace(">> "+packet.Name(), "id", toID, "addr", addr)
+	t.log.Trace(">> "+packet.Name(), t.logcontext...)
 	return nonce, err
 }
 
