@@ -12,7 +12,7 @@ Content-Type: application/json
 POST http://localhost:20201/
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_registerTopic", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_registerTopic", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 99]}
 
 # Read topic table content of node 2, node 3
 
@@ -38,4 +38,4 @@ Content-Type: application/json
 POST http://localhost:20202
 Content-Type: application/json
 
-{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 1]}
+{"jsonrpc": "2.0", "id": 1, "method": "discv5_topicSearch", "params": ["0x8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4", 1, 12345]}
