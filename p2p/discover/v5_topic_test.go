@@ -28,7 +28,7 @@ func TestTopicReg(t *testing.T) {
 	bootnode := startLocalhostV5(t, Config{})
 	client := startLocalhostV5(t, Config{Bootnodes: []*enode.Node{bootnode.Self()}})
 
-	client.RegisterTopic(topicindex.TopicID{})
+	client.RegisterTopic(topicindex.TopicID{}, 0)
 
 	time.Sleep(10 * time.Second)
 
@@ -58,7 +58,7 @@ func TestTopicSearch(t *testing.T) {
 	node1.topicTable.Add(node3.Self(), topic)
 
 	// Attempt to discover the registrations from yet another node.
-	it := node2.TopicSearch(topic)
+	it := node2.TopicSearch(topic, 0)
 	defer it.Close()
 	nodes := enode.ReadNodes(it, 2)
 	t.Log("found nodes:", nodes)

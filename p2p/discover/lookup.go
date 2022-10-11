@@ -38,7 +38,7 @@ type lookup struct {
 	queries     int
 }
 
-type queryFunc func(*node) ([]*node, error)
+type queryFunc func(n *node) ([]*node, error)
 
 func newLookup(ctx context.Context, tab *Table, target enode.ID, q queryFunc) *lookup {
 	it := &lookup{

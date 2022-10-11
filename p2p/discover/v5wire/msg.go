@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
@@ -33,6 +34,10 @@ type Packet interface {
 	Kind() byte          // Kind returns the message type.
 	RequestID() []byte   // Returns the request ID.
 	SetRequestID([]byte) // Sets the request ID.
+
+	// AppendLogInfo returns its argument 'ctx' with additional fields
+	// appended for logging purposes.
+	AppendLogInfo(ctx []interface{}) []interface{}
 }
 
 // Message types.
@@ -92,6 +97,8 @@ type (
 	Findnode struct {
 		ReqID     []byte
 		Distances []uint
+
+		OpID uint64 `rlp:"-"`
 	}
 
 	// NODES is the reply to FINDNODE and TOPICQUERY.
@@ -120,6 +127,8 @@ type (
 		Topic  [32]byte
 		Ticket []byte
 		ENR    *enr.Record
+
+		OpID uint64 `rlp:"-"`
 	}
 
 	// REGCONFIRMATION is the reply to REGTOPIC.
@@ -133,6 +142,8 @@ type (
 	TopicQuery struct {
 		ReqID []byte
 		Topic [32]byte
+
+		OpID uint64 `rlp:"-"`
 	}
 )
 
@@ -175,52 +186,96 @@ func (*Whoareyou) Kind() byte          { return WhoareyouPacket }
 func (*Whoareyou) RequestID() []byte   { return nil }
 func (*Whoareyou) SetRequestID([]byte) {}
 
+func (*Whoareyou) AppendLogInfo(ctx []interface{}) []interface{} {
+	return ctx
+}
+
 func (*Unknown) Name() string        { return "UNKNOWN/v5" }
 func (*Unknown) Kind() byte          { return UnknownPacket }
 func (*Unknown) RequestID() []byte   { return nil }
 func (*Unknown) SetRequestID([]byte) {}
+
+func (*Unknown) AppendLogInfo(ctx []interface{}) []interface{} {
+	return ctx
+}
 
 func (*Ping) Name() string             { return "PING/v5" }
 func (*Ping) Kind() byte               { return PingMsg }
 func (p *Ping) RequestID() []byte      { return p.ReqID }
 func (p *Ping) SetRequestID(id []byte) { p.ReqID = id }
 
+func (p *Ping) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
+}
+
 func (*Pong) Name() string             { return "PONG/v5" }
 func (*Pong) Kind() byte               { return PongMsg }
 func (p *Pong) RequestID() []byte      { return p.ReqID }
 func (p *Pong) SetRequestID(id []byte) { p.ReqID = id }
 
+func (p *Pong) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
+}
+
 func (p *Findnode) Name() string           { return "FINDNODE/v5" }
-func (*Findnode) Kind() byte               { return FindnodeMsg }
+func (p *Findnode) Kind() byte             { return FindnodeMsg }
 func (p *Findnode) RequestID() []byte      { return p.ReqID }
 func (p *Findnode) SetRequestID(id []byte) { p.ReqID = id }
+
+func (p *Findnode) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+}
 
 func (*Nodes) Name() string             { return "NODES/v5" }
 func (*Nodes) Kind() byte               { return NodesMsg }
 func (p *Nodes) RequestID() []byte      { return p.ReqID }
 func (p *Nodes) SetRequestID(id []byte) { p.ReqID = id }
 
+func (p *Nodes) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "tot", p.Total, "n", len(p.Nodes))
+}
+
 func (*TalkRequest) Name() string             { return "TALKREQ/v5" }
 func (*TalkRequest) Kind() byte               { return TalkRequestMsg }
 func (p *TalkRequest) RequestID() []byte      { return p.ReqID }
 func (p *TalkRequest) SetRequestID(id []byte) { p.ReqID = id }
+
+func (p *TalkRequest) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "proto", p.Protocol, "reqid", hexutil.Bytes(p.ReqID), "len", len(p.Message))
+}
 
 func (*TalkResponse) Name() string             { return "TALKRESP/v5" }
 func (*TalkResponse) Kind() byte               { return TalkResponseMsg }
 func (p *TalkResponse) RequestID() []byte      { return p.ReqID }
 func (p *TalkResponse) SetRequestID(id []byte) { p.ReqID = id }
 
+func (p *TalkResponse) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", p.ReqID, "len", len(p.Message))
+}
+
 func (p *Regtopic) Name() string           { return "REGTOPIC/v5:" + hex.EncodeToString(p.Topic[:]) }
-func (*Regtopic) Kind() byte               { return RegtopicMsg }
+func (p *Regtopic) Kind() byte             { return RegtopicMsg }
 func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
+
+func (p *Regtopic) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+}
 
 func (*Regconfirmation) Name() string             { return "REGCONFIRMATION/v5" }
 func (*Regconfirmation) Kind() byte               { return RegconfirmationMsg }
 func (p *Regconfirmation) RequestID() []byte      { return p.ReqID }
 func (p *Regconfirmation) SetRequestID(id []byte) { p.ReqID = id }
 
+func (p *Regconfirmation) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "wtime", p.WaitTime, "ok", p.Ticket == nil)
+}
+
 func (p *TopicQuery) Name() string           { return "TOPICQUERY/v5:" + hex.EncodeToString(p.Topic[:]) }
 func (*TopicQuery) Kind() byte               { return TopicQueryMsg }
 func (p *TopicQuery) RequestID() []byte      { return p.ReqID }
 func (p *TopicQuery) SetRequestID(id []byte) { p.ReqID = id }
+
+func (p *TopicQuery) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+}

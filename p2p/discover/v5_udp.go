@@ -74,6 +74,8 @@ type UDPv5 struct {
 	clock        mclock.Clock
 	validSchemes enr.IdentityScheme
 
+	logcontext []interface{}
+
 	// talkreq handler registry
 	trlock     sync.Mutex
 	trhandlers map[string]TalkRequestHandler
@@ -259,8 +261,8 @@ func (t *UDPv5) AllNodes() []*enode.Node {
 }
 
 // RegisterTopic adds a topic for registration.
-func (t *UDPv5) RegisterTopic(topic topicindex.TopicID) {
-	t.topicSys.register(topic)
+func (t *UDPv5) RegisterTopic(topic topicindex.TopicID, opid uint64) {
+	t.topicSys.register(topic, opid)
 }
 
 // StopRegisterTopic removes a topic from registration.
@@ -281,8 +283,8 @@ func (t *UDPv5) LocalTopicNodes(topic topicindex.TopicID) []*enode.Node {
 }
 
 // TopicSearch returns an iterator over random nodes found in a topic.
-func (t *UDPv5) TopicSearch(topic topicindex.TopicID) enode.Iterator {
-	return t.topicSys.newSearchIterator(topic)
+func (t *UDPv5) TopicSearch(topic topicindex.TopicID, opid uint64) enode.Iterator {
+	return t.topicSys.newSearchIterator(topic, opid)
 }
 
 // RegisterTalkHandler adds a handler for 'talk requests'. The handler function is called
@@ -321,7 +323,7 @@ func (t *UDPv5) RandomNodes() enode.Iterator {
 // Lookup performs a recursive lookup for the given target.
 // It returns the closest nodes to target.
 func (t *UDPv5) Lookup(target enode.ID) []*enode.Node {
-	return t.newLookup(t.closeCtx, target).run()
+	return t.newLookup(t.closeCtx, target, 0).run()
 }
 
 // lookupRandom looks up a random target.
@@ -333,30 +335,30 @@ func (t *UDPv5) lookupRandom() []*enode.Node {
 // lookupSelf looks up our own node ID.
 // This is needed to satisfy the transport interface.
 func (t *UDPv5) lookupSelf() []*enode.Node {
-	return t.newLookup(t.closeCtx, t.Self().ID()).run()
+	return t.newLookup(t.closeCtx, t.Self().ID(), 0).run()
 }
 
 func (t *UDPv5) newRandomLookup(ctx context.Context) *lookup {
 	var target enode.ID
 	crand.Read(target[:])
-	return t.newLookup(ctx, target)
+	return t.newLookup(ctx, target, 0)
 }
 
-func (t *UDPv5) newLookup(ctx context.Context, target enode.ID) *lookup {
+func (t *UDPv5) newLookup(ctx context.Context, target enode.ID, opid uint64) *lookup {
 	return newLookup(ctx, t.tab, target, func(n *node) ([]*node, error) {
-		return t.lookupWorker(n, target)
+		return t.lookupWorker(n, target, opid)
 	})
 }
 
 // lookupWorker performs FINDNODE calls against a single node during lookup.
-func (t *UDPv5) lookupWorker(destNode *node, target enode.ID) ([]*node, error) {
+func (t *UDPv5) lookupWorker(destNode *node, target enode.ID, opid uint64) ([]*node, error) {
 	var (
 		dists = lookupDistances(target, destNode.ID())
 		nodes = nodesByDistance{target: target}
 		err   error
 	)
 	var r []*enode.Node
-	r, err = t.findnode(unwrapNode(destNode), dists)
+	r, err = t.findnode(unwrapNode(destNode), dists, opid)
 	if errors.Is(err, errClosed) {
 		return nil, err
 	}
@@ -401,7 +403,7 @@ func (t *UDPv5) ping(n *enode.Node) (uint64, error) {
 
 // RequestENR requests n's record.
 func (t *UDPv5) RequestENR(n *enode.Node) (*enode.Node, error) {
-	nodes, err := t.findnode(n, []uint{0})
+	nodes, err := t.findnode(n, []uint{0}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -412,17 +414,19 @@ func (t *UDPv5) RequestENR(n *enode.Node) (*enode.Node, error) {
 }
 
 // findnode calls FINDNODE on a node and waits for responses.
-func (t *UDPv5) findnode(n *enode.Node, distances []uint) ([]*enode.Node, error) {
-	resp := t.call(n, v5wire.NodesMsg, &v5wire.Findnode{Distances: distances})
+func (t *UDPv5) findnode(n *enode.Node, distances []uint, opid uint64) ([]*enode.Node, error) {
+	req := &v5wire.Findnode{Distances: distances, OpID: opid}
+	resp := t.call(n, v5wire.NodesMsg, req)
 	return t.waitForNodes(resp, distances)
 }
 
 // topicRegister sends REGTOPIC to n and waits for a response.
-func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []byte) (*v5wire.Regconfirmation, error) {
+func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []byte, opid uint64) (*v5wire.Regconfirmation, error) {
 	req := &v5wire.Regtopic{
 		Topic:  topic,
 		Ticket: ticket,
 		ENR:    t.Self().Record(),
+		OpID:   opid,
 	}
 	resp := t.call(n, v5wire.RegconfirmationMsg, req)
 	defer t.callDone(resp)
@@ -436,8 +440,8 @@ func (t *UDPv5) topicRegister(n *enode.Node, topic topicindex.TopicID, ticket []
 }
 
 // topicQuery sends TOPICQUERY and waits for one or more NODES responses.
-func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID) ([]*enode.Node, error) {
-	req := &v5wire.TopicQuery{Topic: topic}
+func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID, opid uint64) ([]*enode.Node, error) {
+	req := &v5wire.TopicQuery{Topic: topic, OpID: opid}
 	resp := t.call(n, v5wire.NodesMsg, req)
 	return t.waitForNodes(resp, nil)
 }
@@ -749,7 +753,9 @@ func (t *UDPv5) handlePacket(rawpacket []byte, fromAddr *net.UDPAddr) error {
 	}
 	if packet.Kind() != v5wire.WhoareyouPacket {
 		// WHOAREYOU logged separately to report errors.
-		t.log.Trace("<< "+packet.Name(), "id", fromID, "addr", addr)
+		t.logcontext = append(t.logcontext[:0], "id", fromID, "addr", addr)
+		t.logcontext = packet.AppendLogInfo(t.logcontext)
+		t.log.Trace("<< "+packet.Name(), t.logcontext...)
 	}
 	t.handle(packet, fromID, fromAddr)
 	return nil

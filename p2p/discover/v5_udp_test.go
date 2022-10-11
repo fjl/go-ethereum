@@ -317,7 +317,7 @@ func TestUDPv5_findnodeCall(t *testing.T) {
 	)
 	go func() {
 		var err error
-		response, err = test.udp.findnode(remote, distances)
+		response, err = test.udp.findnode(remote, distances, 0)
 		done <- err
 	}()
 
@@ -366,7 +366,7 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 	)
 	go func() {
 		var err error
-		response, err = test.udp.topicQuery(remote, topic)
+		response, err = test.udp.topicQuery(remote, topic, 0)
 		done <- err
 	}()
 
@@ -473,7 +473,7 @@ func TestUDPv5_callTimeoutReset(t *testing.T) {
 		done     = make(chan error, 1)
 	)
 	go func() {
-		_, err := test.udp.findnode(remote, []uint{distance})
+		_, err := test.udp.findnode(remote, []uint{distance}, 0)
 		done <- err
 	}()
 

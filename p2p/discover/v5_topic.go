@@ -47,14 +47,14 @@ func newTopicSystem(transport *UDPv5, config topicindex.Config) *topicSystem {
 	}
 }
 
-func (sys *topicSystem) register(topic topicindex.TopicID) {
+func (sys *topicSystem) register(topic topicindex.TopicID, opid uint64) {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 
 	if _, ok := sys.reg[topic]; ok {
 		return
 	}
-	sys.reg[topic] = newTopicReg(sys, topic)
+	sys.reg[topic] = newTopicReg(sys, topic, opid)
 }
 
 func (sys *topicSystem) stopRegister(topic topicindex.TopicID) {
@@ -81,12 +81,12 @@ func (sys *topicSystem) stop() {
 	}
 }
 
-func (sys *topicSystem) newSearchIterator(topic topicindex.TopicID) enode.Iterator {
+func (sys *topicSystem) newSearchIterator(topic topicindex.TopicID, opid uint64) enode.Iterator {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 
 	resultCh := make(chan *enode.Node, 200)
-	s := newTopicSearch(sys, topic, resultCh)
+	s := newTopicSearch(sys, topic, resultCh, opid)
 	return newTopicSearchIterator(sys, s, resultCh)
 }
 
@@ -94,8 +94,10 @@ func (sys *topicSystem) newSearchIterator(topic topicindex.TopicID) enode.Iterat
 type topicReg struct {
 	state *topicindex.Registration
 	clock mclock.Clock
-	wg    sync.WaitGroup
-	quit  chan struct{}
+	opid  uint64
+
+	wg   sync.WaitGroup
+	quit chan struct{}
 
 	lookupCtx     context.Context
 	lookupCancel  context.CancelFunc
@@ -112,11 +114,12 @@ type regResponse struct {
 	err error
 }
 
-func newTopicReg(sys *topicSystem, topic topicindex.TopicID) *topicReg {
+func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topicReg {
 	ctx, cancel := context.WithCancel(context.Background())
 	reg := &topicReg{
 		state:         topicindex.NewRegistration(topic, sys.config),
 		clock:         sys.config.Clock,
+		opid:          opid,
 		quit:          make(chan struct{}),
 		lookupCtx:     ctx,
 		lookupCancel:  cancel,
@@ -205,7 +208,7 @@ func (reg *topicReg) runLookups(sys *topicSystem) {
 	defer reg.wg.Done()
 
 	for target := range reg.lookupTarget {
-		l := sys.transport.newLookup(reg.lookupCtx, target)
+		l := sys.transport.newLookup(reg.lookupCtx, target, reg.opid)
 		for l.advance() {
 			// Send results of this step over to the main loop.
 			nodes := unwrapNodes(l.replyBuffer)
@@ -240,7 +243,7 @@ func (reg *topicReg) runRequests(sys *topicSystem) {
 		n := attempt.Node
 		topic := reg.state.Topic()
 		resp := regResponse{att: attempt}
-		resp.msg, resp.err = sys.transport.topicRegister(n, topic, attempt.Ticket)
+		resp.msg, resp.err = sys.transport.topicRegister(n, topic, attempt.Ticket, reg.opid)
 
 		// Send response to main loop.
 		select {
@@ -254,6 +257,7 @@ func (reg *topicReg) runRequests(sys *topicSystem) {
 // topicSearch handles searching in a single topic.
 type topicSearch struct {
 	topic  topicindex.TopicID
+	opid   uint64
 	config topicindex.Config
 
 	wg   sync.WaitGroup
@@ -276,12 +280,13 @@ type topicQueryResp struct {
 	err   error
 }
 
-func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.Node) *topicSearch {
+func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.Node, opid uint64) *topicSearch {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &topicSearch{
 		topic:    topic,
 		config:   sys.config,
+		opid:     opid,
 		quit:     make(chan struct{}),
 		resultCh: out,
 
@@ -396,7 +401,7 @@ func (s *topicSearch) runLookups(sys *topicSystem) {
 	defer s.wg.Done()
 
 	for target := range s.lookupCh {
-		l := sys.transport.newLookup(s.lookupCtx, target)
+		l := sys.transport.newLookup(s.lookupCtx, target, s.opid)
 		// Note: here, only the final results (i.e. closest to target) are taken.
 		nodes := l.run()
 		select {
@@ -412,7 +417,7 @@ func (s *topicSearch) runRequests(sys *topicSystem) {
 
 	for n := range s.queryCh {
 		resp := topicQueryResp{src: n}
-		resp.nodes, resp.err = sys.transport.topicQuery(n, s.topic)
+		resp.nodes, resp.err = sys.transport.topicQuery(n, s.topic, s.opid)
 
 		// Send response to main loop.
 		select {
