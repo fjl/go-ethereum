@@ -205,7 +205,7 @@ func (p *Ping) RequestID() []byte      { return p.ReqID }
 func (p *Ping) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Ping) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
+	return append(ctx, "req", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
 }
 
 func (*Pong) Name() string             { return "PONG/v5" }
@@ -214,7 +214,7 @@ func (p *Pong) RequestID() []byte      { return p.ReqID }
 func (p *Pong) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Pong) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
+	return append(ctx, "req", hexutil.Bytes(p.ReqID), "enrseq", p.ENRSeq)
 }
 
 func (p *Findnode) Name() string           { return "FINDNODE/v5" }
@@ -223,7 +223,11 @@ func (p *Findnode) RequestID() []byte      { return p.ReqID }
 func (p *Findnode) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Findnode) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID))
+	if p.OpID != 0 {
+		ctx = append(ctx, "opid", p.OpID)
+	}
+	return ctx
 }
 
 func (*Nodes) Name() string             { return "NODES/v5" }
@@ -232,7 +236,7 @@ func (p *Nodes) RequestID() []byte      { return p.ReqID }
 func (p *Nodes) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Nodes) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "tot", p.Total, "n", len(p.Nodes))
+	return append(ctx, "req", hexutil.Bytes(p.ReqID), "tot", p.Total, "n", len(p.Nodes))
 }
 
 func (*TalkRequest) Name() string             { return "TALKREQ/v5" }
@@ -250,7 +254,7 @@ func (p *TalkResponse) RequestID() []byte      { return p.ReqID }
 func (p *TalkResponse) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *TalkResponse) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", p.ReqID, "len", len(p.Message))
+	return append(ctx, "req", p.ReqID, "len", len(p.Message))
 }
 
 func (p *Regtopic) Name() string           { return "REGTOPIC/v5:" + hex.EncodeToString(p.Topic[:]) }
@@ -259,7 +263,11 @@ func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regtopic) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID))
+	if p.OpID != 0 {
+		ctx = append(ctx, "opid", p.OpID)
+	}
+	return ctx
 }
 
 func (*Regconfirmation) Name() string             { return "REGCONFIRMATION/v5" }
@@ -268,7 +276,7 @@ func (p *Regconfirmation) RequestID() []byte      { return p.ReqID }
 func (p *Regconfirmation) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regconfirmation) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "wtime", p.WaitTime, "ok", p.Ticket == nil)
+	return append(ctx, "req", hexutil.Bytes(p.ReqID), "wtime", p.WaitTime, "ok", p.Ticket == nil)
 }
 
 func (p *TopicQuery) Name() string           { return "TOPICQUERY/v5:" + hex.EncodeToString(p.Topic[:]) }
@@ -277,5 +285,9 @@ func (p *TopicQuery) RequestID() []byte      { return p.ReqID }
 func (p *TopicQuery) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *TopicQuery) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "reqid", hexutil.Bytes(p.ReqID), "opid", p.OpID)
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID))
+	if p.OpID != 0 {
+		ctx = append(ctx, "opid", p.OpID)
+	}
+	return ctx
 }
