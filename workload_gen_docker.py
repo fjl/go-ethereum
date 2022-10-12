@@ -12,6 +12,8 @@ import collections
 import numpy as np
 import scipy.stats as ss
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 # default run script
 def_run_script = 'run-network-docker.sh'
 def_url_prefix = 'http://'
@@ -23,6 +25,7 @@ IP1=172
 IP2=18
 IP3=0
 node_ip={}
+processes = []
 
 def gen_id():
     global ID
@@ -191,17 +194,20 @@ def register_topics(zipf, config):
     
     # send a registration at exponentially distributed 
     # times with average inter departure time of 1/rate
-    while (len(nodes) > 0):
-        time_now = float(time.time())
-        if time_next > time_now:
-            time.sleep(time_next - time_now)
-        else:
-            node = random.choice(nodes)
-            nodes.remove(node)
-            topic = "t" + str(zipf.rv() + 1)
-            node_topic[node] = topic
-            send_register(node, topic, config)
-            time_next = time_now + random.expovariate(request_rate)
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+
+        while (len(nodes) > 0):
+            time_now = float(time.time())
+            if time_next > time_now:
+                time.sleep(time_next - time_now)
+            else:
+                node = random.choice(nodes)
+                nodes.remove(node)
+                topic = "t" + str(zipf.rv() + 1)
+                node_topic[node] = topic
+                #send_register(node, topic, config)
+                processes.append(executor.submit(send_register,node, topic, config))
+                time_next = time_now + random.expovariate(request_rate)
 
     return node_topic       
 
@@ -210,9 +216,11 @@ def search_topics(zipf, config, node_to_topic):
     node = random.choice(nodes)
     nodes = list(range(1, config['num_nodes'] + 1))
 
-    for node in nodes:
-        topic = node_to_topic[node]
-        send_lookup(node, topic, config)
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+        for node in nodes:
+            topic = node_to_topic[node]
+            processes.append(executor.submit(send_lookup,node, topic, config))
+            #send_lookup(node, topic, config)
 
 def send_lookup(node, topic, config):
     topic_digest = get_topic_digest(topic)

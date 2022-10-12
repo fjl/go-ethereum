@@ -12,7 +12,6 @@ import collections
 import numpy as np
 import scipy.stats as ss
 
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # default run script
@@ -176,17 +175,21 @@ def register_topics(zipf, config):
     
     # send a registration at exponentially distributed 
     # times with average inter departure time of 1/rate
-    while (len(nodes) > 0):
-        time_now = float(time.time())
-        if time_next > time_now:
-            time.sleep(time_next - time_now)
-        else:
-            node = random.choice(nodes)
-            nodes.remove(node)
-            topic = "t" + str(zipf.rv() + 1)
-            node_topic[node] = topic
-            send_register(node, topic, config)
-            time_next = time_now + random.expovariate(request_rate)
+
+    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+
+        while (len(nodes) > 0):
+            time_now = float(time.time())
+            if time_next > time_now:
+                time.sleep(time_next - time_now)
+            else:
+                node = random.choice(nodes)
+                nodes.remove(node)
+                topic = "t" + str(zipf.rv() + 1)
+                node_topic[node] = topic
+                #send_register(node, topic, config)
+                processes.append(executor.submit(send_register,node, topic, config))
+                time_next = time_now + random.expovariate(request_rate)
 
     return node_topic       
 
@@ -205,7 +208,7 @@ def send_lookup(node, topic, config):
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_topicSearch",
-        "params": [topic_digest, 1],
+        "params": [topic_digest, 1  ],
         "jsonrpc": "2.0",
         "id": gen_id(),
     }
