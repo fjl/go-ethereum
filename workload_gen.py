@@ -5,6 +5,8 @@ import sys
 import time
 import re
 import hashlib
+import traceback
+
 
 import math
 import collections
@@ -14,6 +16,7 @@ import scipy.stats as ss
 
 import json
 import time
+import queue
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -25,8 +28,8 @@ num_topics = 1
 zipf_exponent = 1.0
 NODE_ID = 0
 OP_ID = 100
-LOGS = [] 
-processes = []
+LOGS = queue.Queue()
+PROCESSES = []
 
 def gen_op_id():
     global OP_ID 
@@ -41,11 +44,13 @@ def gen_node_id():
 # Write json logs to a file
 def write_logs_to_file(fname):
     global LOGS
+    LOGS.put(None)
+    print("LOGS: ", LOGS)
     with open(fname, 'w+') as f:
-        for data in LOGS:
+        for data in iter(LOGS.get, None):
+            print("Data: ", data)
             json.dump(data, f)
             f.write("\n")
-
 
 # get current time in milliseconds
 def get_current_time_msec():
@@ -80,7 +85,7 @@ def send_register(node, topic, config, op_id):
     }
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
-    LOGS.append(payload)
+    LOGS.put(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     print(payload)
     port = config['rpc_port'] + node
@@ -88,8 +93,8 @@ def send_register(node, topic, config, op_id):
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    LOGS.append(respond) 
-    print('Register response: ', resp)
+    LOGS.put(resp) 
+    print("Register response: ", resp)
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator 
@@ -218,7 +223,7 @@ def register_topics(zipf, config):
                 topic = "t" + str(zipf.rv() + 1)
                 node_topic[node] = topic
                 #send_register(node, topic, config)
-                processes.append(executor.submit(send_register,node, topic, config, gen_op_id()))
+                PROCESSES.append(executor.submit(send_register,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
 
     return node_topic       
@@ -231,7 +236,7 @@ def search_topics(zipf, config, node_to_topic):
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
         for node in nodes:
             topic = node_to_topic[node]
-            processes.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
+            PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
 
 
 def send_lookup(node, topic, config, op_id):
@@ -246,7 +251,7 @@ def send_lookup(node, topic, config, op_id):
     }
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
-    LOGS.append(payload)
+    LOGS.put(payload)
     print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
@@ -255,7 +260,7 @@ def send_lookup(node, topic, config, op_id):
     resp["opid"] = op_id 
     resp["time"] = get_current_time_msec()
     print('Lookup response: ', resp)
-    LOGS.append(resp)
+    LOGS.put(resp)
 
 def main():
 
@@ -275,6 +280,12 @@ def main():
     #wait for registrations to complete
     time.sleep(10)
     search_topics(zipf, config, node_to_topic)
+    for future in PROCESSES:
+        try:
+            result = future.result()
+        except Exception:
+            traceback.print_exc()
+            print('Unable to get the result')
     write_logs_to_file("./discv5-test/logs/logs.json")
     
     #assert response["result"] == "echome!"
