@@ -134,7 +134,7 @@ func (tab *TopicTable) isRegistered(n *enode.Node, t TopicID) bool {
 // Add adds a registration of node n for a topic. This only works when the table
 // has space available.
 func (tab *TopicTable) Add(n *enode.Node, topic TopicID) bool {
-	if tab.all.Len() < tab.config.TableLimit {
+	if tab.all.Len() < tab.config.AdCacheSize {
 		tab.add(n, topic)
 		return true
 	}
@@ -144,7 +144,7 @@ func (tab *TopicTable) Add(n *enode.Node, topic TopicID) bool {
 func (tab *TopicTable) add(n *enode.Node, topic TopicID) *topicTableEntry {
 	reg := &topicTableEntry{
 		node:  n,
-		exp:   tab.config.Clock.Now().Add(tab.config.RegLifetime),
+		exp:   tab.config.Clock.Now().Add(tab.config.AdLifetime),
 		topic: topic,
 	}
 	if tab.reg[topic] == nil {
@@ -181,8 +181,8 @@ func (tab *TopicTable) topicSize(t TopicID) int {
 func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 	regCount := tab.all.Len()
 
-	occupancy := 1.0 - (float64(regCount) / float64(tab.config.TableLimit))
-	occupancyScore := float64(tab.config.RegLifetime/time.Second) / math.Pow(occupancy, occupancyExp)
+	occupancy := 1.0 - (float64(regCount) / float64(tab.config.AdCacheSize))
+	occupancyScore := float64(tab.config.AdLifetime/time.Second) / math.Pow(occupancy, occupancyExp)
 
 	topicMod := math.Pow(float64(tab.topicSize(t))/float64(regCount+1), topicModifierExp)
 	ipMod := tab.wt.ipModifier(n)
@@ -206,7 +206,7 @@ func (tab *TopicTable) Register(n *enode.Node, t TopicID, waitTime time.Duration
 	}
 
 	// Check if there is space. If not, the node needs to come back when a slot opens.
-	if tab.all.Len() >= tab.config.TableLimit {
+	if tab.all.Len() >= tab.config.AdCacheSize {
 		now := tab.config.Clock.Now()
 		return tab.NextExpiryTime().Sub(now)
 	}

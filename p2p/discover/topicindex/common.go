@@ -30,8 +30,8 @@ type Config struct {
 	Self enode.ID // the node's own ID
 
 	// Topic table settings.
-	RegLifetime time.Duration
-	TableLimit  int
+	AdLifetime  time.Duration
+	AdCacheSize int
 
 	// Registration settings.
 	RegAttemptTimeout time.Duration
@@ -42,11 +42,11 @@ type Config struct {
 }
 
 func (cfg Config) withDefaults() Config {
-	if cfg.RegLifetime == 0 {
-		cfg.RegLifetime = 15 * time.Minute
+	if cfg.AdLifetime == 0 {
+		cfg.AdLifetime = 15 * time.Minute
 	}
-	if cfg.TableLimit == 0 {
-		cfg.TableLimit = 5000
+	if cfg.AdCacheSize == 0 {
+		cfg.AdCacheSize = 5000
 	}
 
 	// Note: RegAttemptTimeout == RegLifetime is the most correct choice, since, when
@@ -54,7 +54,7 @@ func (cfg Config) withDefaults() Config {
 	// registration still hasn't worked after this time, the registrar is overloaded or
 	// malfunctioning and it's better to pick another one.
 	if cfg.RegAttemptTimeout == 0 {
-		cfg.RegAttemptTimeout = cfg.RegLifetime
+		cfg.RegAttemptTimeout = cfg.AdLifetime
 	}
 
 	if cfg.Log == nil {
