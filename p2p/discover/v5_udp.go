@@ -1024,6 +1024,8 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 			WaitTimeIssued: newTime,
 			LastUsed:       now,
 		})
+	} else {
+		resp.WaitTime = uint(t.topicTable.AdLifetime() / time.Second)
 	}
 	t.sendResponse(fromID, fromAddr, resp)
 }

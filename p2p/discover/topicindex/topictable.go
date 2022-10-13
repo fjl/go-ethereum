@@ -66,6 +66,11 @@ func NewTopicTable(hostID enode.ID, cfg Config) *TopicTable {
 	}
 }
 
+// AdLifetime returns the configured advertisement lifetime.
+func (tab *TopicTable) AdLifetime() time.Duration {
+	return tab.config.AdLifetime
+}
+
 // Nodes returns all nodes registered for a topic.
 func (tab *TopicTable) Nodes(topic TopicID) []*enode.Node {
 	now := tab.config.Clock.Now()
