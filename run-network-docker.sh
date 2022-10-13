@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 
-if [[ -z "${N}" ]]; then
-  N_NODES=4
-else
-  N_NODES=${N}
-fi
-
-#N=1000
+N_NODES=3
 
 DIR=discv5-test
 
