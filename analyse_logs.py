@@ -84,7 +84,7 @@ def get_op_df(log_path):
         else:
             #we shouldn't receive a reply without seeing a request
             assert (opid in operations)
-            print("opid:", opid, "reply")
+            #print("opid:", opid, "reply")
             row = operations[opid]
             #we should have only one reply per request
             assert(row['reply_received'] == False)
@@ -98,7 +98,7 @@ def get_op_df(log_path):
         #print(row)
         operations[opid] = row
 
-    print(operations)
+    #print(operations)
 
     return pd.DataFrame(operations.values())
 
