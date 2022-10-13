@@ -17,8 +17,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v5test"
@@ -79,15 +81,23 @@ var (
 			bootnodesFlag,
 			nodekeyFlag,
 			nodedbFlag,
+			nodeConfigFlag,
 			listenAddrFlag,
 			httpAddrFlag,
 		},
 	}
 )
 
+var (
+	nodeConfigFlag = &cli.StringFlag{
+		Name:  "config",
+		Usage: "Path to JSON config file",
+	}
+)
+
 func discv5Ping(ctx *cli.Context) error {
 	n := getNodeArg(ctx)
-	disc := startV5(ctx)
+	disc := startV5(ctx, nil)
 	defer disc.Close()
 
 	fmt.Println(disc.Ping(n))
@@ -96,7 +106,7 @@ func discv5Ping(ctx *cli.Context) error {
 
 func discv5Resolve(ctx *cli.Context) error {
 	n := getNodeArg(ctx)
-	disc := startV5(ctx)
+	disc := startV5(ctx, nil)
 	defer disc.Close()
 
 	fmt.Println(disc.Resolve(n))
@@ -113,7 +123,7 @@ func discv5Crawl(ctx *cli.Context) error {
 		inputSet = loadNodesJSON(nodesFile)
 	}
 
-	disc := startV5(ctx)
+	disc := startV5(ctx, nil)
 	defer disc.Close()
 	c := newCrawler(inputSet, disc, disc.RandomNodes())
 	c.revalidateInterval = 10 * time.Minute
@@ -133,7 +143,16 @@ func discv5Test(ctx *cli.Context) error {
 }
 
 func discv5Listen(ctx *cli.Context) error {
-	disc := startV5(ctx)
+	var extConfig *discv5NodeConfig
+	if configFile := ctx.String(nodeConfigFlag.Name); configFile != "" {
+		cfg, err := loadConfig(configFile)
+		if err != nil {
+			return fmt.Errorf("can't load config file: %v", err)
+		}
+		extConfig = cfg
+	}
+
+	disc := startV5(ctx, extConfig)
 	defer disc.Close()
 
 	fmt.Println(disc.Self())
@@ -152,8 +171,12 @@ func discv5Listen(ctx *cli.Context) error {
 }
 
 // startV5 starts an ephemeral discovery v5 node.
-func startV5(ctx *cli.Context) *discover.UDPv5 {
+func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 	ln, config := makeDiscoveryConfig(ctx)
+	if extConfig != nil {
+		config.Topic.TableLimit = extConfig.TopicTableLimit
+	}
+
 	socket := listen(ln, ctx.String(listenAddrFlag.Name))
 	disc, err := discover.ListenV5(socket, ln, config)
 	if err != nil {
@@ -164,6 +187,24 @@ func startV5(ctx *cli.Context) *discover.UDPv5 {
 
 // ---------------------------
 // JSON tester
+
+type discv5NodeConfig struct {
+	TopicTableLimit int `json:"topicTableLimit"`
+}
+
+func loadConfig(file string) (*discv5NodeConfig, error) {
+	fd, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer fd.Close()
+
+	var cfg discv5NodeConfig
+	if err := json.NewDecoder(fd).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
 
 type discAPI struct {
 	host *discover.UDPv5
