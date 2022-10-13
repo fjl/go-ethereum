@@ -12,6 +12,8 @@ import collections
 import numpy as np
 import scipy.stats as ss
 
+import json
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # default run script
@@ -20,14 +22,27 @@ def_url_prefix = 'http://localhost'
 request_rate = 10  # request rate per second
 num_topics = 1
 zipf_exponent = 1.0
-ID = 0
+NODE_ID = 0
+OP_ID = 100
+LOGS = [] 
 processes = []
 
+def gen_op_id():
+    global OP_ID 
+    OP_ID += 1
+    return OP_ID
 
-def gen_id():
-    global ID
-    ID += 1
-    return ID
+def gen_node_id():
+    global NODE_ID
+    NODE_ID += 1
+    return NODE_ID
+
+# Write json logs to a file
+def write_logs_to_file(fname):
+    global LOGS
+    with open(fname, 'w+') as f:
+        for data in LOGS:
+            json.dump(data, f)
 
 def get_topic_digest(topicStr):
     topic_digest = hashlib.sha256(topicStr.encode('utf-8')).hexdigest()
@@ -48,18 +63,23 @@ def read_config(filename):
 
 def send_register(node, topic, config):
 
+    global OP_ID, LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_registerTopic",
-        "params": [topic_digest],
+        "params": [topic_digest, gen_op_id()],
         "jsonrpc": "2.0",
-        "id": gen_id(),
+        "id": gen_node_id(),
     }
+    LOGS.append(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
+    #print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
-    print('Register response: ', resp)
+    resp["op_id"] = OP_ID
+    LOGS.append(respond) 
+    #print('Register response: ', resp)
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator 
@@ -205,18 +225,24 @@ def search_topics(zipf, config, node_to_topic):
 
 
 def send_lookup(node, topic, config):
+
+    global OP_ID, LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_topicSearch",
-        "params": [topic_digest, 1  ],
+        "params": [topic_digest, 1, gen_op_id()],
         "jsonrpc": "2.0",
-        "id": gen_id(),
+        "id": gen_node_id(),
     }
+    LOGS.append(payload)
+    print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
-    print('Node:', node, 'is searching for topic:', topic)
+    #print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
-    print('Lookup response: ', resp)
+    resp["op_id"] = OP_ID 
+    #print('Lookup response: ', resp)
+    LOGS.append(resp)
 
 def main():
 
@@ -236,6 +262,7 @@ def main():
     #wait for registrations to complete
     time.sleep(10)
     search_topics(zipf, config, node_to_topic)
+    write_logs_to_file("logs.json")
     
     #assert response["result"] == "echome!"
     #assert response["jsonrpc"]
