@@ -1,0 +1,6 @@
+{
+    "adCacheSize": 5,
+    "adLifetime": 60,
+    "regBucketSize": 10,
+    "searchBucketSize": 3
+}
