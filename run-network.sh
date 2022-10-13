@@ -7,7 +7,7 @@ CONFIG_FILE=./discv5-stdconfig.json
 JSONLOGS=1
 
 # Args processing.
-while getopts ":c:Jjh" arg; do
+while getopts ":c:n:Jjh" arg; do
   case ${arg} in
     h) echo "Usage: $0 [ -J ] [ -c config.json ]"; exit 0 ;;
     :) echo "$0: Must supply an argument to option -${OPTARG}." >&2; exit 1;;
@@ -15,7 +15,8 @@ while getopts ":c:Jjh" arg; do
 
     j) JSONLOGS=1 ;;
     J) JSONLOGS=0 ;;
-    c) CONFIG_FILE="$OPTARG" ;;
+    n) N_NODES=$OPTARG ;;
+    c) CONFIG_FILE=$OPTARG ;;
   esac
 done
 
