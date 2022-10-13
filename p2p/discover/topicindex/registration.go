@@ -251,7 +251,7 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 }
 
 // HandleRegistered should be called when a node confirms topic registration.
-func (r *Registration) HandleRegistered(att *RegAttempt, totalWaitTime time.Duration, ttl time.Duration) {
+func (r *Registration) HandleRegistered(att *RegAttempt, ttl time.Duration) {
 	r.validate(att)
 
 	r.log.Trace("Topic registration successful", "id", att.Node.ID())
