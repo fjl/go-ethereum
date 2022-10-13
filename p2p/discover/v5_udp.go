@@ -149,11 +149,10 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 	cfg = cfg.withDefaults()
 
-	topicConfig := topicindex.Config{
-		Self:  ln.ID(),
-		Log:   cfg.Log,
-		Clock: cfg.Clock,
-	}
+	topicConfig := cfg.Topic
+	topicConfig.Self = ln.ID()
+	topicConfig.Log = cfg.Log
+	topicConfig.Clock = cfg.Clock
 
 	t := &UDPv5{
 		// static fields

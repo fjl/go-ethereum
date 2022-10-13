@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -44,9 +45,10 @@ type Config struct {
 	NetRestrict  *netutil.Netlist   // list of allowed IP networks
 	Bootnodes    []*enode.Node      // list of bootstrap nodes
 	Unhandled    chan<- ReadPacket  // unhandled packets are sent on this channel
-	Log          log.Logger         // if set, log messages go here
 	ValidSchemes enr.IdentityScheme // allowed identity schemes
-	Clock        mclock.Clock
+	Topic        topicindex.Config  // configuration of topic index
+	Log          log.Logger         // if set, log messages go here
+	Clock        mclock.Clock       // timer clock, for testing
 }
 
 func (cfg Config) withDefaults() Config {
