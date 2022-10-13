@@ -194,7 +194,7 @@ func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 
 type discv5NodeConfig struct {
 	AdCacheSize       int `json:"adCacheSize"`
-	AdLifetime        int `json:"adLifetimeSeconds"`
+	AdLifetimeSeconds int `json:"adLifetimeSeconds"`
 	RegBucketSize     int `json:"regBucketSize"`
 	RegTimeoutSeconds int `json:"regTimeoutSeconds"`
 	SearchBucketSize  int `json:"searchBucketSize"`
