@@ -34,7 +34,7 @@ make_keys() {
 # get_node_url returns the enode URL of node $i.
 get_node_url() {
     let "port = 30200 + $1"
-    ./devp2p key to-enr --tcp 0 --udp $port "$DIR/keys/node-$1.key"
+    ./devp2p key to-enr --ip 127.0.0.1 --tcp 0 --udp $port "$DIR/keys/node-$1.key"
 }
 
 # start_nodes launches the node processes.
