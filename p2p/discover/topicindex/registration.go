@@ -221,6 +221,10 @@ func (r *Registration) StartRequest(att *RegAttempt) {
 // HandleTicketResponse should be called when a node responds to a registration
 // request with a ticket and waiting time.
 func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
+	// TODO
+	//    - if wait time > max timeout, remove the attempt
+	//    - if number of retries too high, remove
+
 	att.Ticket = ticket
 	att.NextTime = r.clock.Now().Add(waitTime)
 	heap.Push(&r.heap, att)
