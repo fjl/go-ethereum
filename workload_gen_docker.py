@@ -26,7 +26,7 @@ request_rate = 10  # request rate per second
 num_topics = 1
 zipf_exponent = 1.0
 IP1=172
-IP2=18
+IP2=20
 IP3=0
 node_ip={}
 processes = []
@@ -109,8 +109,9 @@ def send_register(node, topic, config, op_id):
     LOGS.put(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     print(payload)
-    port = config['rpc_port'] + node
-    url = def_url_prefix + ":" + str(port)
+    port = config['rpc_port']
+    url = def_url_prefix + node_ip[node]+".2:" + str(port)
+    print(url)
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
@@ -275,7 +276,7 @@ def send_lookup(node, topic, config, op_id):
     LOGS.put(payload)
     print(payload)
     port = config['rpc_port'] + node
-    url = def_url_prefix + ":" + str(port)
+    url = def_url_prefix + node_ip[node]+".2:" + str(port)    
     print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id 

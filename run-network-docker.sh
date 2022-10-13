@@ -15,7 +15,7 @@ export COMPOSE_HTTP_TIMEOUT=300
 export DOCKER_CLIENT_TIMEOUT=300
 
 IP1=172
-IP2=18
+IP2=20
 IP3=0
 
 get_bootstrap_network() {
@@ -72,11 +72,11 @@ config_network() {
 }
 
 cleanup() {
-    docker stop bootstrap-node
+    docker kill bootstrap-node
     docker rm bootstrap-node 
     docker network rm bootstrap-network
     for i in $(seq $N_NODES); do
-	docker stop node$i
+	docker kill node$i
 	docker rm node$i
 	 docker network rm node$i-network
     done	    
