@@ -13,6 +13,7 @@ import numpy as np
 import scipy.stats as ss
 
 import json
+import time
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -45,6 +46,11 @@ def write_logs_to_file(fname):
             json.dump(data, f)
             f.write("\n")
 
+
+# get current time in milliseconds
+def get_current_time_msec():
+    return round(time.time() * 1000)
+
 def get_topic_digest(topicStr):
     topic_digest = hashlib.sha256(topicStr.encode('utf-8')).hexdigest()
     # json cannot unmarshal hex string without 0x so adding below
@@ -72,14 +78,16 @@ def send_register(node, topic, config, op_id):
         "jsonrpc": "2.0",
         "id": op_id,
     }
-    payload["op_id"] = op_id
+    payload["opid"] = op_id
+    payload["time"] = get_current_time_msec()
     LOGS.append(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
-    resp["op_id"] = op_id
+    resp["opid"] = op_id
+    resp["time"] = get_current_time_msec
     LOGS.append(respond) 
     print('Register response: ', resp)
 
@@ -236,14 +244,16 @@ def send_lookup(node, topic, config, op_id):
         "jsonrpc": "2.0",
         "id": op_id,
     }
-    payload["op_id"] = op_id
+    payload["opid"] = op_id
+    payload["time"] = get_current_time_msec()
     LOGS.append(payload)
     print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
     print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
-    resp["op_id"] = op_id 
+    resp["opid"] = op_id 
+    resp["time"] = get_current_time_msec
     print('Lookup response: ', resp)
     LOGS.append(resp)
 
