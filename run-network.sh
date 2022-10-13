@@ -2,26 +2,20 @@
 
 N_NODES=10
 DIR=discv5-test
-
 CONFIG_FILE=./discv5-stdconfig.json
 JSONLOGS=1
 
 # Args processing.
-while getopts ":c:n:Jjh" arg; do
+while getopts "c:n:Jjh" arg; do
   case ${arg} in
-    h) echo "Usage: $0 [ -J ] [ -c config.json ]"; exit 0 ;;
-    :) echo "$0: Must supply an argument to option -${OPTARG}." >&2; exit 1;;
-    '?') echo "Invalid option: -${OPTARG}"; exit 2;;
-
+    '?') exit 2 ;;
+    h) echo "Usage: $0 [ -J ] [ -n netsize ] [ -c config.json ]"; exit 0 ;;
     j) JSONLOGS=1 ;;
     J) JSONLOGS=0 ;;
     n) N_NODES=$OPTARG ;;
     c) CONFIG_FILE=$OPTARG ;;
   esac
 done
-
-
-rm  $DIR/logs/*
 
 # make_keys creates all node keys.
 make_keys() {
@@ -45,8 +39,6 @@ get_node_url() {
 start_nodes() {
     bootnode=$(get_node_url 1)
     echo "Bootstrap node: $bootnode"
-
-    mkdir -p "$DIR/logs"
 
     for i in $(seq $N_NODES); do
         let "port = 30200 + $i"
@@ -76,6 +68,10 @@ go build ./cmd/devp2p
 
 # Generate all keys.
 make_keys
+
+# Initialize logs directory.
+rm $DIR/logs/*
+mkdir -p "$DIR/logs"
 
 # Cleanup at exit.
 trap 'kill $(jobs -p)' EXIT
