@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 N_NODES=10
 DIR=discv5-test
 CONFIG_FILE=./discv5-stdconfig.json
@@ -63,6 +65,18 @@ start_nodes() {
     done
 }
 
+# write_experiment creates experiment.json
+write_experiment() {
+    rm $DIR/experiment.json
+    cat >$DIR/experiment.json <<EOF
+    {
+        "nodes": ${N_NODES},
+        "rpcBasePort": 20200,
+        "config": $(cat $CONFIG_FILE)
+    }
+EOF
+}
+
 # Rebuild.
 go build ./cmd/devp2p
 
@@ -70,8 +84,9 @@ go build ./cmd/devp2p
 make_keys
 
 # Initialize logs directory.
-rm $DIR/logs/*
 mkdir -p "$DIR/logs"
+rm $DIR/logs/*
+write_experiment
 
 # Cleanup at exit.
 trap 'kill $(jobs -p)' EXIT
