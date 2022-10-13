@@ -87,7 +87,7 @@ def send_register(node, topic, config, op_id):
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id
-    resp["time"] = get_current_time_msec
+    resp["time"] = get_current_time_msec()
     LOGS.append(respond) 
     print('Register response: ', resp)
 
@@ -253,7 +253,7 @@ def send_lookup(node, topic, config, op_id):
     print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id 
-    resp["time"] = get_current_time_msec
+    resp["time"] = get_current_time_msec()
     print('Lookup response: ', resp)
     LOGS.append(resp)
 
