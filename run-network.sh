@@ -2,7 +2,23 @@
 
 N_NODES=3
 DIR=discv5-test
+
 CONFIG_FILE=./discv5-stdconfig.json
+JSONLOGS=0
+
+# Args processing.
+while getopts ":c:jh" arg; do
+  case ${arg} in
+    h) echo "Usage: $0 [ -j ] [ -c config.json ]"; exit 0 ;;
+    :) echo "$0: Must supply an argument to option -${OPTARG}." >&2; exit 1;;
+    '?') echo "Invalid option: -${OPTARG}"; exit 2;;
+
+    j) JSONLOGS=1 ;;
+    J) JSONLOGS=0 ;;
+    c) CONFIG_FILE="$OPTARG" ;;
+  esac
+done
+
 
 rm  $DIR/logs/*
 
@@ -36,11 +52,26 @@ start_nodes() {
         let "rpc = 20200 + $i"
         keyfile="$DIR/keys/node-$i.key"
         logfile="$DIR/logs/node-$i.log"
-        echo "Starting node $i..."
         rm -f "$logfile"
-        ./devp2p --log.json --verbosity 5 discv5 listen --config "$CONFIG_FILE" --bootnodes "$bootnode" --nodekey "$(cat $keyfile)" --addr "127.0.0.1:$port" --rpc "127.0.0.1:$rpc" 2>&1 | tee "$logfile" &
+
+        logflags="--verbosity 5"
+        if [[ "$JSONLOGS" = "1" ]]; then
+            logflags="$logflags --log.json"
+        fi
+
+        nodeflags="--bootnodes $bootnode --nodekey $(cat $keyfile) --addr 127.0.0.1:$port --rpc 127.0.0.1:$rpc"
+        if [[ -n "$CONFIG_FILE" ]]; then
+            nodeflags="$nodeflags --config $CONFIG_FILE"
+        fi
+
+        # Start the node!
+        echo "Starting node $i..."
+        ./devp2p $logflags discv5 listen $nodeflags 2>&1 | tee "$logfile" &
     done
 }
+
+# Rebuild.
+go build ./cmd/devp2p
 
 # Generate all keys.
 make_keys
