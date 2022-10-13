@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-N_NODES=100
+N_NODES=10
 DIR=discv5-test
 
 CONFIG_FILE=./discv5-stdconfig.json

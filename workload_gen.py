@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def_run_script = 'run-network.sh'
 def_url_prefix = 'http://localhost'
 request_rate = 10  # request rate per second
-num_topics = 1
+num_topics = 5
 zipf_exponent = 1.0
 NODE_ID = 0
 OP_ID = 100
