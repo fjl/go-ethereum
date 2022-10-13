@@ -57,7 +57,7 @@ def get_msg_df(log_path):
 
 def get_op_df(log_path):
     operations = {} #indexed by opid
-    for line in open(log_path + '/op.log', 'r').readlines():
+    for line in open(log_path + '/logs.json', 'r').readlines():
         #not a json line
         if(line[0] != '{'):
             continue
@@ -65,24 +65,24 @@ def get_op_df(log_path):
         row = {}
         jsons = json.loads(line)
         #it's a RPC request
-        opid = jsons['opid']
+        op_id = jsons['op_id']
         if('method' in jsons):
             #we can't have 2 operations with the same ID
-            assert (opid not in operations)
+            assert (op_id not in operations)
             row = {}
-            row['opid'] = opid
+            row['op_id'] = op_id
             row['method'] = jsons['method']
             row['reply_received'] = False
             row['params'] = jsons['params']
         #it's a RPC reply
         else:
             #we shouldn't receive a reply without seeing a request
-            assert (opid in operations)
-            row = operations[opid]
+            assert (op_id in operations)
+            row = operations[op_id]
             row['reply_received'] = True
             row['results'] = jsons['results']
         print(row)
-        operations[opid] = row
+        operations[op_id] = row
 
     
 
@@ -94,7 +94,7 @@ def get_op_df(log_path):
 
 
 
-get_op_df('.')
+get_op_df('./discv5-test/logs')
 #df = logs_into_df(log_path)
 
 #print(df['msg_type'].value_counts())
