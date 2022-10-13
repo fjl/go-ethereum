@@ -43,6 +43,7 @@ def write_logs_to_file(fname):
     with open(fname, 'w+') as f:
         for data in LOGS:
             json.dump(data, f)
+            f.write("\n")
 
 def get_topic_digest(topicStr):
     topic_digest = hashlib.sha256(topicStr.encode('utf-8')).hexdigest()
@@ -262,7 +263,7 @@ def main():
     #wait for registrations to complete
     time.sleep(10)
     search_topics(zipf, config, node_to_topic)
-    write_logs_to_file("logs.json")
+    write_logs_to_file("./discv5-test/logs/logs.json")
     
     #assert response["result"] == "echome!"
     #assert response["jsonrpc"]
