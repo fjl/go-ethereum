@@ -41,7 +41,10 @@ def get_msg_df(log_path):
                 continue
             row['timestamp'] = parse(jsons['t'])
             row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
-            row['opid'] = jsons['opid']
+            #print(row)
+            if('opid' in jsons):
+                row['opid'] = jsons['opid']
+
             
             #we have a key to the message specified
             #currently it can only be the topic
@@ -66,31 +69,33 @@ def get_op_df(log_path):
         row = {}
         jsons = json.loads(line)
         #it's a RPC request
-        op_id = jsons['op_id']
+        opid = jsons['opid']
         if('method' in jsons):
-            print("op_id:", op_id, "req")
+            print("opid:", opid, "req")
             #we can't have 2 operations with the same ID
-            assert (op_id not in operations)
+            assert (opid not in operations)
             row = {}
-            row['op_id'] = op_id
+            row['opid'] = opid
             row['method'] = jsons['method']
             row['reply_received'] = False
             row['params'] = jsons['params']
         #it's a RPC reply
         else:
             #we shouldn't receive a reply without seeing a request
-            assert (op_id in operations)
-            print("op_id:", op_id, "reply")
-            row = operations[op_id]
+            assert (opid in operations)
+            print("opid:", opid, "reply")
+            row = operations[opid]
             #we should have only one reply per request
             assert(row['reply_received'] == False)
             row['reply_received'] = True
             row['result'] = jsons['result']
         #print("~~~row:")
         #print(row)
-        operations[op_id] = row
+        operations[opid] = row
 
     print(operations)
+
+    return pd.DataFrame(operations.values())
 
     
 
@@ -102,7 +107,7 @@ def get_op_df(log_path):
 
 
 
-get_op_df('./discv5-test/logs')
+#get_op_df('./discv5-test/logs')
 #df = logs_into_df(log_path)
 
 #print(df['msg_type'].value_counts())
