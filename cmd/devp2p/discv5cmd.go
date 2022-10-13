@@ -174,7 +174,11 @@ func discv5Listen(ctx *cli.Context) error {
 func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 	ln, config := makeDiscoveryConfig(ctx)
 	if extConfig != nil {
-		config.Topic.TableLimit = extConfig.TopicTableLimit
+		config.Topic.AdCacheSize = extConfig.AdCacheSize
+		config.Topic.AdLifetime = time.Duration(extConfig.AdLifetimeSeconds) * time.Second
+		config.Topic.RegBucketSize = extConfig.RegBucketSize
+		config.Topic.RegAttemptTimeout = time.Duration(extConfig.RegTimeoutSeconds) * time.Second
+		config.Topic.SearchBucketSize = extConfig.SearchBucketSize
 	}
 
 	socket := listen(ln, ctx.String(listenAddrFlag.Name))
@@ -189,7 +193,11 @@ func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 // JSON tester
 
 type discv5NodeConfig struct {
-	TopicTableLimit int `json:"topicTableLimit"`
+	AdCacheSize       int `json:"adCacheSize"`
+	AdLifetime        int `json:"adLifetimeSeconds"`
+	RegBucketSize     int `json:"regBucketSize"`
+	RegTimeoutSeconds int `json:"regTimeoutSeconds"`
+	SearchBucketSize  int `json:"searchBucketSize"`
 }
 
 func loadConfig(file string) (*discv5NodeConfig, error) {
