@@ -4,12 +4,12 @@ N_NODES=3
 DIR=discv5-test
 
 CONFIG_FILE=./discv5-stdconfig.json
-JSONLOGS=0
+JSONLOGS=1
 
 # Args processing.
-while getopts ":c:jh" arg; do
+while getopts ":c:Jjh" arg; do
   case ${arg} in
-    h) echo "Usage: $0 [ -j ] [ -c config.json ]"; exit 0 ;;
+    h) echo "Usage: $0 [ -J ] [ -c config.json ]"; exit 0 ;;
     :) echo "$0: Must supply an argument to option -${OPTARG}." >&2; exit 1;;
     '?') echo "Invalid option: -${OPTARG}"; exit 2;;
 
