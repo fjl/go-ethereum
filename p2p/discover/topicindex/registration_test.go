@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
+	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
@@ -64,6 +66,7 @@ func rbContainsAll(b regBucket, nodes []*enode.Node) bool {
 	return true
 }
 
+// This test checks that registration attempts are created for found nodes.
 func TestRegistrationRequests(t *testing.T) {
 	cfg := testConfig(t)
 	r := NewRegistration(topic1, cfg)
@@ -94,6 +97,63 @@ func TestRegistrationRequests(t *testing.T) {
 		t.Fatal("top request not removed")
 	}
 	r.HandleRegistered(req, 1*time.Second, 10*time.Minute)
+}
+
+// This test checks that registration attempts expire after the lifetime
+// of the ad runs out.
+func TestRegistrationExpiry(t *testing.T) {
+	simclock := new(mclock.Simulated)
+
+	cfg := testConfig(t)
+	cfg.Clock = simclock
+	cfg.AdLifetime = 20
+	r := NewRegistration(topic1, cfg)
+
+	// Deliver some nodes.
+	node := nodesAtDistance(enode.ID(r.Topic()), 30, 1)
+	r.AddNodes(node)
+
+	// A registration attempt should be created.
+	att := r.Update()
+	if att == nil {
+		t.Fatal("no request scheduled")
+	}
+	if att.State != Waiting {
+		t.Fatal("attempt should be in state", Waiting, "but has state", att.State)
+	}
+
+	// Mark registration to successful.
+	r.StartRequest(att)
+	r.HandleRegistered(att, 1*time.Second, cfg.AdLifetime)
+
+	// NextUpdateTime should now return the expiry time of the ad.
+	now := simclock.Now()
+	if next := r.NextUpdateTime(); next != now.Add(cfg.AdLifetime) {
+		t.Fatal("wrong next update time:", next)
+	}
+
+	// The attempt should be removed when the ad expires.
+	simclock.Run(cfg.AdLifetime)
+	if a := r.Update(); a != nil {
+		t.Log(spew.Sdump(a))
+		t.Fatal("Update returned an attempt, but nothing to do.")
+	}
+	if r.heap.Len() > 0 {
+		t.Fatal("attempt not removed")
+	}
+
+	// Re-add the node.
+	simclock.Run(1 * time.Second)
+	r.AddNodes(node)
+
+	// It should get scheduled for registration again.
+	att = r.Update()
+	if att == nil {
+		t.Fatal("no request scheduled")
+	}
+	if att.State != Waiting {
+		t.Fatal("attempt should be in state", Waiting, "but has state", att.State)
+	}
 }
 
 // nodesAtDistance creates n nodes for which enode.LogDist(base, node.ID()) == ld.
