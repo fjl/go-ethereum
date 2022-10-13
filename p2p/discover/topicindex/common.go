@@ -45,6 +45,7 @@ type Config struct {
 	Log   log.Logger
 }
 
+// withDefaults configures defaults for unset config options.
 func (cfg Config) withDefaults() Config {
 	if cfg.AdLifetime == 0 {
 		cfg.AdLifetime = 15 * time.Minute
@@ -52,19 +53,16 @@ func (cfg Config) withDefaults() Config {
 	if cfg.AdCacheSize == 0 {
 		cfg.AdCacheSize = 5000
 	}
-
-	// Note: RegAttemptTimeout == RegLifetime is the most correct choice, since, when
-	// RegLifetime has passed, all ads will have cycled in the remote table. If
-	// registration still hasn't worked after this time, the registrar is overloaded or
-	// malfunctioning and it's better to pick another one.
 	if cfg.RegAttemptTimeout == 0 {
+		// Note: RegAttemptTimeout == RegLifetime is the most correct choice, since, when
+		// RegLifetime has passed, all ads will have cycled in the remote table. If
+		// registration still hasn't worked after this time, the registrar is overloaded or
+		// malfunctioning and it's better to pick another one.
 		cfg.RegAttemptTimeout = cfg.AdLifetime
 	}
 	if cfg.RegBucketSize == 0 {
 		cfg.RegBucketSize = 10
 	}
-
-	// Apply defaults.
 	if cfg.SearchBucketSize == 0 {
 		cfg.SearchBucketSize = 8
 	}
@@ -89,4 +87,6 @@ func (t TopicID) String() string {
 	return hex.EncodeToString(t[:])
 }
 
+// Never is a special time value returned by certain event-scheduling functions.
+// It indicates that the event should not be scheduled.
 const Never = ^mclock.AbsTime(0)
