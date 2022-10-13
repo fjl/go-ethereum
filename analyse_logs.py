@@ -61,12 +61,14 @@ def get_op_df(log_path):
         #not a json line
         if(line[0] != '{'):
             continue
-        print(line)
+        #print("###line:")
+        #print(line)
         row = {}
         jsons = json.loads(line)
         #it's a RPC request
         op_id = jsons['op_id']
         if('method' in jsons):
+            print("op_id:", op_id, "req")
             #we can't have 2 operations with the same ID
             assert (op_id not in operations)
             row = {}
@@ -78,11 +80,17 @@ def get_op_df(log_path):
         else:
             #we shouldn't receive a reply without seeing a request
             assert (op_id in operations)
+            print("op_id:", op_id, "reply")
             row = operations[op_id]
+            #we should have only one reply per request
+            assert(row['reply_received'] == False)
             row['reply_received'] = True
-            row['results'] = jsons['results']
-        print(row)
+            row['result'] = jsons['result']
+        #print("~~~row:")
+        #print(row)
         operations[op_id] = row
+
+    print(operations)
 
     
 
