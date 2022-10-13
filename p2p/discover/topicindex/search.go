@@ -20,14 +20,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 const (
-	searchBucketNodes       = 8 //  maximum number of nodes in a search table bucket
-	searchBucketResultLimit = searchBucketNodes * 3
-
 	// searchTableDepth is the number of buckets kept in the search table.
 	//
 	// The table only keeps nodes at logdist(topic, n) > (256 - searchTableDepth).
@@ -41,10 +37,8 @@ const (
 
 // Search is the state associated with searching for a single topic.
 type Search struct {
-	clock mclock.Clock
-	log   log.Logger
 	topic TopicID
-	self  enode.ID
+	cfg   Config
 
 	numResults int
 
@@ -67,12 +61,7 @@ type searchBucket struct {
 // NewSearch creates a new topic search state.
 func NewSearch(topic TopicID, config Config) *Search {
 	config = config.withDefaults()
-	s := &Search{
-		clock: config.Clock,
-		log:   config.Log,
-		self:  config.Self,
-		topic: topic,
-	}
+	s := &Search{cfg: config, topic: topic}
 	dist := 256
 	for i := range s.buckets {
 		s.buckets[i].new = make(map[enode.ID]*enode.Node)
@@ -113,7 +102,7 @@ func (s *Search) IsDone() bool {
 
 // NextLookupTime returns when the next lookup operation should start.
 func (s *Search) NextLookupTime() mclock.AbsTime {
-	now := s.clock.Now()
+	now := s.cfg.Clock.Now()
 	next := s.lastLookupTime.Add(searchLookupMinDelay)
 	if next > now {
 		return next
@@ -139,19 +128,19 @@ func (s *Search) LookupTarget() enode.ID {
 func (s *Search) AddLookupNodes(nodes []*enode.Node) {
 	var anyNewNode bool
 	for _, n := range nodes {
-		if n.ID() == s.self {
+		if n.ID() == s.cfg.Self {
 			continue
 		}
 		b := s.bucket(n.ID())
 		if !b.contains(n.ID()) {
 			anyNewNode = true
 		}
-		if b.count() < searchBucketNodes {
+		if b.count() < s.cfg.SearchBucketSize {
 			b.add(n)
 		}
 	}
 
-	s.lastLookupTime = s.clock.Now()
+	s.lastLookupTime = s.cfg.Clock.Now()
 	if !anyNewNode {
 		s.lookupsWithoutNewNodes++
 	} else {
@@ -175,10 +164,10 @@ func (s *Search) AddQueryResults(from *enode.Node, results []*enode.Node) {
 	b.setAsked(from)
 
 	for _, n := range results {
-		if n.ID() == s.self {
+		if n.ID() == s.cfg.Self {
 			continue
 		}
-		s.log.Debug("Added topic search result", "fromid", from.ID(), "rid", n.ID())
+		s.cfg.Log.Debug("Added topic search result", "topic", s.topic, "fromid", from.ID(), "rid", n.ID())
 		b.numResults++
 		s.numResults++
 		s.resultBuffer = append(s.resultBuffer, n)

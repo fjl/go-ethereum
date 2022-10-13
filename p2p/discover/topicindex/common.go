@@ -34,7 +34,11 @@ type Config struct {
 	AdCacheSize int
 
 	// Registration settings.
+	RegBucketSize     int // number of nodes per registration bucket
 	RegAttemptTimeout time.Duration
+
+	// Search settings.
+	SearchBucketSize int // number of nodes in search buckets
 
 	// These settings are exposed for testing purposes.
 	Clock mclock.Clock
@@ -56,6 +60,14 @@ func (cfg Config) withDefaults() Config {
 	if cfg.RegAttemptTimeout == 0 {
 		cfg.RegAttemptTimeout = cfg.AdLifetime
 	}
+	if cfg.RegBucketSize == 0 {
+		cfg.RegBucketSize = 10
+	}
+
+	// Apply defaults.
+	if cfg.SearchBucketSize == 0 {
+		cfg.SearchBucketSize = 8
+	}
 
 	if cfg.Log == nil {
 		cfg.Log = log.Root()
@@ -71,6 +83,10 @@ type TopicID [32]byte
 
 func (t TopicID) TerminalString() string {
 	return hex.EncodeToString(t[:8])
+}
+
+func (t TopicID) String() string {
+	return hex.EncodeToString(t[:])
 }
 
 const Never = ^mclock.AbsTime(0)
