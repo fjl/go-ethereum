@@ -62,26 +62,26 @@ def read_config(filename):
 
     return config
 
-def send_register(node, topic, config):
+def send_register(node, topic, config, op_id):
 
-    global OP_ID, LOGS
+    global LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_registerTopic",
-        "params": [topic_digest, gen_op_id()],
+        "params": [topic_digest, op_id],
         "jsonrpc": "2.0",
-        "id": gen_node_id(),
+        "id": op_id,
     }
-    payload["op_id"] = OP_ID
+    payload["op_id"] = op_id
     LOGS.append(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
-    #print(payload)
+    print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
-    resp["op_id"] = OP_ID
+    resp["op_id"] = op_id
     LOGS.append(respond) 
-    #print('Register response: ', resp)
+    print('Register response: ', resp)
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator 
@@ -210,7 +210,7 @@ def register_topics(zipf, config):
                 topic = "t" + str(zipf.rv() + 1)
                 node_topic[node] = topic
                 #send_register(node, topic, config)
-                processes.append(executor.submit(send_register,node, topic, config))
+                processes.append(executor.submit(send_register,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
 
     return node_topic       
@@ -223,28 +223,28 @@ def search_topics(zipf, config, node_to_topic):
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
         for node in nodes:
             topic = node_to_topic[node]
-            processes.append(executor.submit(send_lookup,node, topic, config))
+            processes.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
 
 
-def send_lookup(node, topic, config):
+def send_lookup(node, topic, config, op_id):
 
-    global OP_ID, LOGS
+    global LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_topicSearch",
-        "params": [topic_digest, 1, gen_op_id()],
+        "params": [topic_digest, 1, op_id],
         "jsonrpc": "2.0",
-        "id": gen_node_id(),
+        "id": op_id,
     }
-    payload["op_id"] = OP_ID
+    payload["op_id"] = op_id
     LOGS.append(payload)
     print(payload)
     port = config['rpc_port'] + node
     url = def_url_prefix + ":" + str(port)
-    #print('Node:', node, 'is searching for topic:', topic)
+    print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
-    resp["op_id"] = OP_ID 
-    #print('Lookup response: ', resp)
+    resp["op_id"] = op_id 
+    print('Lookup response: ', resp)
     LOGS.append(resp)
 
 def main():
