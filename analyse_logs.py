@@ -41,6 +41,8 @@ def get_msg_df(log_path):
                 continue
             row['timestamp'] = parse(jsons['t'])
             row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
+            if('req' in jsons):
+                row['req_id'] = jsons['req']
             #print(row)
             if('opid' in jsons):
                 row['opid'] = jsons['opid']
