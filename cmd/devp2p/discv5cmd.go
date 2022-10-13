@@ -230,7 +230,7 @@ func (api *discAPI) TopicNodes(topic common.Hash) []*enode.Node {
 	return api.host.LocalTopicNodes(topicindex.TopicID(topic))
 }
 
-func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) []*enode.Node {
+func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) []enode.ID {
 	var op uint64
 	if opID != nil {
 		op = *opID
@@ -238,7 +238,12 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) [
 	it := api.host.TopicSearch(topicindex.TopicID(topic), op)
 	defer it.Close()
 
-	return enode.ReadNodes(it, numNodes)
+	nodes := enode.ReadNodes(it, numNodes)
+	ids := make([]enode.ID, len(nodes))
+	for i := range nodes {
+		ids[i] = nodes[i].ID()
+	}
+	return ids
 }
 
 func (api *discAPI) LocalNode() *enode.Node {

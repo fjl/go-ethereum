@@ -6,7 +6,7 @@ import hashlib
 
 log_path = "./discv5-test/logs"
 
-def logs_into_df(log_path):
+def get_msg_df(log_path):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
@@ -14,6 +14,8 @@ def logs_into_df(log_path):
 
     rows = []
     for log_file in os.listdir(log_path):
+        if (not log_file.startswith("node-")):
+            continue
         print("Reading", log_file)
         node_id = log_file.split('-')[1].split('.')[0] #node-10.log
         for line in open(log_path + '/' + log_file, 'r').readlines():
@@ -39,6 +41,7 @@ def logs_into_df(log_path):
                 continue
             row['timestamp'] = parse(jsons['t'])
             row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
+            row['opid'] = jsons['opid']
             
             #we have a key to the message specified
             #currently it can only be the topic
@@ -52,6 +55,46 @@ def logs_into_df(log_path):
             
     return pd.DataFrame(rows)
 
+def get_op_df(log_path):
+    operations = {} #indexed by opid
+    for line in open(log_path + '/op.log', 'r').readlines():
+        #not a json line
+        if(line[0] != '{'):
+            continue
+        print(line)
+        row = {}
+        jsons = json.loads(line)
+        #it's a RPC request
+        opid = jsons['opid']
+        if('method' in jsons):
+            #we can't have 2 operations with the same ID
+            assert (opid not in operations)
+            row = {}
+            row['opid'] = opid
+            row['method'] = jsons['method']
+            row['reply_received'] = False
+            row['params'] = jsons['params']
+        #it's a RPC reply
+        else:
+            #we shouldn't receive a reply without seeing a request
+            assert (opid in operations)
+            row = operations[opid]
+            row['reply_received'] = True
+            row['results'] = jsons['results']
+        print(row)
+        operations[opid] = row
+
+    
+
+
+
+            
+    
+
+
+
+
+get_op_df('.')
 #df = logs_into_df(log_path)
 
 #print(df['msg_type'].value_counts())
