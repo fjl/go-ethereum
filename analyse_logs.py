@@ -79,6 +79,7 @@ def get_op_df(log_path):
             row['method'] = jsons['method']
             row['reply_received'] = False
             row['params'] = jsons['params']
+            row['start_time'] = jsons['time']
         #it's a RPC reply
         else:
             #we shouldn't receive a reply without seeing a request
@@ -89,6 +90,10 @@ def get_op_df(log_path):
             assert(row['reply_received'] == False)
             row['reply_received'] = True
             row['result'] = jsons['result']
+            row['end_time'] = jsons['time']
+            row['time'] = row['end_time'] - row['start_time']
+            assert(row['time'] >= 0)
+
         #print("~~~row:")
         #print(row)
         operations[opid] = row
