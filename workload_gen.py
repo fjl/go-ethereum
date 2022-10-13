@@ -7,6 +7,7 @@ import re
 import hashlib
 import traceback
 
+import os.path
 
 import math
 import collections
@@ -20,19 +21,18 @@ import queue
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# default run script
-def_run_script = 'run-network.sh'
 def_url_prefix = 'http://localhost'
 request_rate = 10  # request rate per second
 num_topics = 5
 zipf_exponent = 1.0
+
 NODE_ID = 0
 OP_ID = 100
 LOGS = queue.Queue()
 PROCESSES = []
 
 def gen_op_id():
-    global OP_ID 
+    global OP_ID
     OP_ID += 1
     return OP_ID
 
@@ -62,17 +62,6 @@ def get_topic_digest(topicStr):
     topic_digest = '0x' + topic_digest
     return topic_digest
 
-def read_config(filename):
-    config = {}
-    with open(filename) as f :
-        for aline in f:
-            if 'num_nodes' not in config.keys() and 'N_NODES' in aline: 
-                config['num_nodes'] = int(re.split('[=]', aline)[1])
-            if 'rpc_port' not in config.keys() and 'rpc' in aline:
-                config['rpc_port'] = int(re.split('[=+]', aline)[1])
-
-    return config
-
 def send_register(node, topic, config, op_id):
 
     global LOGS
@@ -88,16 +77,16 @@ def send_register(node, topic, config, op_id):
     LOGS.put(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     print(payload)
-    port = config['rpc_port'] + node
+    port = config['rpcBasePort'] + node
     url = def_url_prefix + ":" + str(port)
     resp = requests.post(url, json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    LOGS.put(resp) 
+    LOGS.put(resp)
     print("Register response: ", resp)
 
 # Following is used to generate random numbers following a zipf distribution
-# Copied below from icarus simulator 
+# Copied below from icarus simulator
 class DiscreteDist(object):
     """Implements a discrete distribution with finite population.
 
@@ -201,14 +190,14 @@ class TruncatedZipfDist(DiscreteDist):
         return self._alpha
 
 
-# perform topic registrations 
+# perform topic registrations
 def register_topics(zipf, config):
     node_topic = {}
     time_now = float(time.time())
-    nodes = list(range(1, config['num_nodes'] + 1))
+    nodes = list(range(1, config['nodes'] + 1))
     time_next = time_now + random.expovariate(request_rate)
-    
-    # send a registration at exponentially distributed 
+
+    # send a registration at exponentially distributed
     # times with average inter departure time of 1/rate
 
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
@@ -226,12 +215,12 @@ def register_topics(zipf, config):
                 PROCESSES.append(executor.submit(send_register,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
 
-    return node_topic       
+    return node_topic
 
 def search_topics(zipf, config, node_to_topic):
-    nodes = list(range(1, config['num_nodes'] + 1))
+    nodes = list(range(1, config['nodes'] + 1))
     node = random.choice(nodes)
-    nodes = list(range(1, config['num_nodes'] + 1))
+    nodes = list(range(1, config['nodes'] + 1))
 
     with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
         for node in nodes:
@@ -253,32 +242,40 @@ def send_lookup(node, topic, config, op_id):
     payload["time"] = get_current_time_msec()
     LOGS.put(payload)
     print(payload)
-    port = config['rpc_port'] + node
+    port = config['rpcBasePort'] + node
     url = def_url_prefix + ":" + str(port)
     print('Node:', node, 'is searching for topic:', topic)
     resp = requests.post(url, json=payload).json()
-    resp["opid"] = op_id 
+    resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     print('Lookup response: ', resp)
     LOGS.put(resp)
 
+def read_config(dir):
+    file = os.path.join(dir, 'experiment.json')
+    print('Reading experiment settings from file:', file)
+    config = {}
+    with open(file) as f:
+        config = json.load(f)
+    assert isinstance(config.get('nodes'), int)
+    assert isinstance(config.get('rpcBasePort'), int)
+    return config
+
 def main():
-
-    run_script = ""
+    # Read experiment parameters.
+    directory = "discv5-test"
     if len(sys.argv) > 1:
-        run_script = sys.argv[1]
-    else:
-        run_script = def_run_script
+        directory = sys.argv[1]
+    config = read_config(directory)
 
-    print('Reading experiment settings from file:', run_script)
-
-    # Read experiment parameters/configs from run script
-    config = read_config(run_script)
+    # register
     zipf = TruncatedZipfDist(zipf_exponent, num_topics)
-
     node_to_topic = register_topics(zipf, config)
-    #wait for registrations to complete
+
+    # wait for registrations to complete
     time.sleep(10)
+
+    # search
     search_topics(zipf, config, node_to_topic)
     for future in PROCESSES:
         try:
@@ -286,12 +283,8 @@ def main():
         except Exception:
             traceback.print_exc()
             print('Unable to get the result')
-    write_logs_to_file("./discv5-test/logs/logs.json")
-    
-    #assert response["result"] == "echome!"
-    #assert response["jsonrpc"]
-    #assert response["id"] == 0
+
+    write_logs_to_file(os.path.join(directory, "logs", "logs.json"))
 
 if __name__ == "__main__":
     main()
-
