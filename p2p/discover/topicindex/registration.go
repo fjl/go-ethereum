@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	regBucketMaxAttempts     = 10
 	regBucketMaxReplacements = 20
 
 	// regTableDepth is the number of buckets kept in the registration table.
@@ -40,22 +39,25 @@ const (
 
 // Registration is the state associated with registering in a single topic.
 type Registration struct {
-	clock mclock.Clock
-	log   log.Logger
 	topic TopicID
-	self  enode.ID
+	cfg   Config
+	log   log.Logger
 
 	// Note: registration buckets are ordered close -> far.
 	buckets [regTableDepth]regBucket
 	heap    regHeap
-
-	timeout time.Duration
 }
 
 //go:generate go run golang.org/x/tools/cmd/stringer@latest -type RegAttemptState
 
 // RegAttemptState is the state of a registration attempt on a node.
 type RegAttemptState int
+
+type regBucket struct {
+	dist  int
+	att   map[enode.ID]*RegAttempt
+	count [nRegStates]int
+}
 
 const (
 	Standby RegAttemptState = iota
@@ -65,32 +67,38 @@ const (
 	nRegStates = int(Registered) + 1
 )
 
-type regBucket struct {
-	dist  int
-	att   map[enode.ID]*RegAttempt
-	count [nRegStates]int
-}
-
+// RegAttempt contains the state of the registration process against
+// a single registrar node.
 type RegAttempt struct {
-	State    RegAttemptState
+	State RegAttemptState
+
+	// NextTime is when the next action related to this attempt must occur.
+	//
+	// In state 'Waiting'
+	//     it is the time of the next registration attempt.
+	// In state 'Registered'
+	//     it is the time when the ad expires.
 	NextTime mclock.AbsTime
 
-	Node          *enode.Node
-	Ticket        []byte
+	// Node is the registrar node.
+	Node *enode.Node
+
+	// Ticket contains the ticket data returned by the last registration call.
+	Ticket []byte
+
+	// TotalWaitTime is the time spent waiting so far.
 	TotalWaitTime time.Duration
 
 	index  int // index in regHeap
 	bucket *regBucket
 }
 
-func NewRegistration(topic TopicID, config Config) *Registration {
-	config = config.withDefaults()
+func NewRegistration(topic TopicID, cfg Config) *Registration {
+	cfg = cfg.withDefaults()
 	r := &Registration{
-		topic:   topic,
-		self:    config.Self,
-		clock:   config.Clock,
-		log:     config.Log.New("topic", topic),
-		timeout: config.RegAttemptTimeout,
+		topic: topic,
+		cfg:   cfg,
+		log:   cfg.Log.New("topic", topic),
 	}
 	dist := 256
 	for i := range r.buckets {
@@ -121,9 +129,10 @@ func (r *Registration) LookupTarget() enode.ID {
 func (r *Registration) AddNodes(nodes []*enode.Node) {
 	for _, n := range nodes {
 		id := n.ID()
-		if id == r.self {
+		if id == r.cfg.Self {
 			continue
 		}
+
 		b := r.bucket(id)
 		attempt, ok := b.att[id]
 		if ok {
@@ -134,6 +143,7 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 			}
 			continue
 		}
+		// The node is not in the table yet.
 
 		if b.count[Standby] >= regBucketMaxReplacements {
 			// There are enough replacements already, ignore the node.
@@ -155,16 +165,18 @@ func (r *Registration) setAttemptState(att *RegAttempt, state RegAttemptState) {
 	att.State = state
 }
 
+// refillAttempts promotes a registrar node from Standby to Waiting.
+// This must be called after every potential attempt state change in the bucket.
 func (r *Registration) refillAttempts(b *regBucket) {
-	if b.count[Waiting] >= regBucketMaxAttempts {
+	if b.count[Waiting] >= r.cfg.RegBucketSize {
+		// Enough attempts in state 'Waiting'.
 		return
 	}
 
-	// Promote a random replacement.
 	for _, att := range b.att {
 		if att.State == Standby {
 			r.setAttemptState(att, Waiting)
-			att.NextTime = r.clock.Now()
+			att.NextTime = r.cfg.Clock.Now()
 			heap.Push(&r.heap, att)
 			break
 		}
@@ -187,7 +199,7 @@ func (r *Registration) NextUpdateTime() mclock.AbsTime {
 
 // Update processes the attempt queue and returns the next attempt in state 'Waiting'.
 func (r *Registration) Update() *RegAttempt {
-	now := r.clock.Now()
+	now := r.cfg.Clock.Now()
 	for len(r.heap) > 0 {
 		att := r.heap[0]
 		switch att.State {
@@ -221,8 +233,12 @@ func (r *Registration) StartRequest(att *RegAttempt) {
 // HandleTicketResponse should be called when a node responds to a registration
 // request with a ticket and waiting time.
 func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
+	// TODO
+	//    - if wait time > max timeout, remove the attempt
+	//    - if number of retries too high, remove
+
 	att.Ticket = ticket
-	att.NextTime = r.clock.Now().Add(waitTime)
+	att.NextTime = r.cfg.Clock.Now().Add(waitTime)
 	heap.Push(&r.heap, att)
 }
 
@@ -230,7 +246,7 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 func (r *Registration) HandleRegistered(att *RegAttempt, totalWaitTime time.Duration, ttl time.Duration) {
 	r.log.Trace("Topic registration successful", "id", att.Node.ID())
 	r.setAttemptState(att, Registered)
-	att.NextTime = r.clock.Now().Add(ttl)
+	att.NextTime = r.cfg.Clock.Now().Add(ttl)
 	heap.Push(&r.heap, att)
 	r.refillAttempts(att.bucket)
 }

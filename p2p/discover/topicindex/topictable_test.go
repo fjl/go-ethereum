@@ -61,8 +61,8 @@ func TestTopicTableRegisterTwice(t *testing.T) {
 
 func testConfig(t *testing.T) Config {
 	return Config{
-		TableLimit: 20,
-		Log:        testlog.Logger(t, log.LvlTrace),
+		AdCacheSize: 20,
+		Log:         testlog.Logger(t, log.LvlTrace),
 	}
 }
 
