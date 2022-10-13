@@ -53,6 +53,12 @@ type Registration struct {
 // RegAttemptState is the state of a registration attempt on a node.
 type RegAttemptState int
 
+type regBucket struct {
+	dist  int
+	att   map[enode.ID]*RegAttempt
+	count [nRegStates]int
+}
+
 const (
 	Standby RegAttemptState = iota
 	Waiting
@@ -61,18 +67,26 @@ const (
 	nRegStates = int(Registered) + 1
 )
 
-type regBucket struct {
-	dist  int
-	att   map[enode.ID]*RegAttempt
-	count [nRegStates]int
-}
-
+// RegAttempt contains the state of the registration process against
+// a single registrar node.
 type RegAttempt struct {
-	State    RegAttemptState
+	State RegAttemptState
+
+	// NextTime is when the next action related to this attempt must occur.
+	//
+	// In state 'Waiting'
+	//     it is the time of the next registration attempt.
+	// In state 'Registered'
+	//     it is the time when the ad expires.
 	NextTime mclock.AbsTime
 
-	Node          *enode.Node
-	Ticket        []byte
+	// Node is the registrar node.
+	Node *enode.Node
+
+	// Ticket contains the ticket data returned by the last registration call.
+	Ticket []byte
+
+	// TotalWaitTime is the time spent waiting so far.
 	TotalWaitTime time.Duration
 
 	index  int // index in regHeap
@@ -118,6 +132,7 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 		if id == r.cfg.Self {
 			continue
 		}
+
 		b := r.bucket(id)
 		attempt, ok := b.att[id]
 		if ok {
@@ -128,6 +143,7 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 			}
 			continue
 		}
+		// The node is not in the table yet.
 
 		if b.count[Standby] >= regBucketMaxReplacements {
 			// There are enough replacements already, ignore the node.
@@ -149,12 +165,14 @@ func (r *Registration) setAttemptState(att *RegAttempt, state RegAttemptState) {
 	att.State = state
 }
 
+// refillAttempts promotes a registrar node from Standby to Waiting.
+// This must be called after every potential attempt state change in the bucket.
 func (r *Registration) refillAttempts(b *regBucket) {
 	if b.count[Waiting] >= r.cfg.RegBucketSize {
+		// Enough attempts in state 'Waiting'.
 		return
 	}
 
-	// Promote a random replacement.
 	for _, att := range b.att {
 		if att.State == Standby {
 			r.setAttemptState(att, Waiting)
