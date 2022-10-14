@@ -1058,6 +1058,11 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 			LastUsed:       now,
 		})
 	} else {
+		// Add cumulative waiting time in logs.
+		// This is here for analysis purposes.
+		totalWaitTimeSeconds := uint(math.Trunc(waitTime.Seconds()))
+		confirmation.CumulativeWaitTime = &totalWaitTimeSeconds
+
 		// TODO: put reasonable bounds on ad lifetime
 		confirmation.WaitTime = uint(t.topicTable.AdLifetime() / time.Second)
 	}

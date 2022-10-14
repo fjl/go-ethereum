@@ -136,6 +136,8 @@ type (
 		ReqID    []byte
 		Ticket   []byte // registered successfully if length zero
 		WaitTime uint
+
+		CumulativeWaitTime *uint `rlp:"-"` // for logs
 	}
 
 	// TOPICQUERY asks for nodes with the given topic.
@@ -276,7 +278,11 @@ func (p *Regconfirmation) RequestID() []byte      { return p.ReqID }
 func (p *Regconfirmation) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regconfirmation) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "req", hexutil.Bytes(p.ReqID), "wtime", p.WaitTime, "ok", p.Ticket == nil)
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID), "ok", p.Ticket != nil, "wtime", p.WaitTime)
+	if p.CumulativeWaitTime != nil {
+		ctx = append(ctx, "total-wtime", *p.CumulativeWaitTime)
+	}
+	return ctx
 }
 
 func (p *TopicQuery) Name() string           { return "TOPICQUERY/v5:" + hex.EncodeToString(p.Topic[:]) }
