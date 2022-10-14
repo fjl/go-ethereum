@@ -113,16 +113,15 @@ func (r *Registration) Topic() TopicID {
 	return r.topic
 }
 
-// LookupTarget returns a target that should be walked towards.
-func (r *Registration) LookupTarget() enode.ID {
-	// This finds the closest bucket with no registrations.
-	center := enode.ID(r.topic)
+// NodeCount returns the number of unique nodes across all buckets.
+func (r *Registration) NodeCount() int {
+	sum := 0
 	for _, b := range r.buckets {
-		if b.count[Registered] == 0 {
-			return enode.RandomID(center, b.dist)
+		for _, c := range b.count {
+			sum += c
 		}
 	}
-	return center
+	return sum
 }
 
 // AddNodes notifies the registration process about found nodes.
@@ -223,6 +222,9 @@ func (r *Registration) Update() *RegAttempt {
 
 // StartRequest should be called when a registration request is sent for the attempt.
 func (r *Registration) StartRequest(att *RegAttempt) {
+	if att.index < 0 {
+		panic(fmt.Errorf("bad attempt index %d in StartRequest", att.index))
+	}
 	if att.State != Waiting {
 		panic(fmt.Errorf("StartRequest for attempt with state=%v", att.State))
 	}

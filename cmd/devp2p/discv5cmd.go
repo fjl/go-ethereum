@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v5test"
@@ -159,13 +160,21 @@ func discv5Listen(ctx *cli.Context) error {
 
 	httpAddr := ctx.String(httpAddrFlag.Name)
 	if httpAddr == "" {
+		// Non-HTTP mode.
 		select {}
 		return nil
 	}
 
+	api := &discAPI{
+		host:          disc,
+		searchTimeout: defaultSearchTimeout,
+	}
+	if extConfig != nil && extConfig.SearchTimeoutSeconds > 0 {
+		api.searchTimeout = time.Duration(extConfig.SearchTimeoutSeconds) * time.Second
+	}
 	log.Info("Starting RPC API server", "addr", httpAddr)
 	srv := rpc.NewServer()
-	srv.RegisterName("discv5", &discAPI{disc})
+	srv.RegisterName("discv5", api)
 	httpsrv := http.Server{Addr: httpAddr, Handler: srv}
 	return httpsrv.ListenAndServe()
 }
@@ -192,12 +201,16 @@ func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 // ---------------------------
 // JSON tester
 
+const defaultSearchTimeout = 120 * time.Second
+
 type discv5NodeConfig struct {
 	AdCacheSize       int `json:"adCacheSize"`
 	AdLifetimeSeconds int `json:"adLifetimeSeconds"`
 	RegBucketSize     int `json:"regBucketSize"`
 	RegTimeoutSeconds int `json:"regTimeoutSeconds"`
 	SearchBucketSize  int `json:"searchBucketSize"`
+
+	SearchTimeoutSeconds int `json:"searchTimeoutSeconds"`
 }
 
 func loadConfig(file string) (*discv5NodeConfig, error) {
@@ -217,7 +230,8 @@ func loadConfig(file string) (*discv5NodeConfig, error) {
 }
 
 type discAPI struct {
-	host *discover.UDPv5
+	host          *discover.UDPv5
+	searchTimeout time.Duration
 }
 
 func (api *discAPI) RegisterTopic(topic common.Hash, opID *uint64) {
@@ -245,13 +259,41 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) [
 	if opID != nil {
 		op = *opID
 	}
+
 	it := api.host.TopicSearch(topicindex.TopicID(topic), op)
 	defer it.Close()
 
-	nodes := enode.ReadNodes(it, numNodes)
+	var (
+		nodes      = make(chan []*enode.Node, 1)
+		searchDone = make(chan struct{})
+		wg         sync.WaitGroup
+	)
+
+	// This closes the iterator when search is done or times out.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		timeout := time.NewTimer(api.searchTimeout)
+		defer timeout.Stop()
+		select {
+		case <-timeout.C:
+		case <-searchDone:
+		}
+		it.Close()
+	}()
+
+	// This reads nodes from the iterator.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		nodes <- enode.ReadNodes(it, numNodes)
+		close(searchDone)
+	}()
+
+	wg.Wait()
 	ids := make([]enode.ID, len(nodes))
-	for i := range nodes {
-		ids[i] = nodes[i].ID()
+	for i, n := range <-nodes {
+		ids[i] = n.ID()
 	}
 	return ids
 }
