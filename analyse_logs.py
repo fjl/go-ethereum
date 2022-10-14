@@ -53,6 +53,10 @@ def get_msg_df(log_path, op_df):
             if('opid' in jsons):
                 row['opid'] = jsons['opid']
 
+            if("total-wtime" in jsons):
+                row['total_wtime'] = jsons['total-wtime']
+            if("ok" in jsons):
+                row['ok'] = jsons['ok']
             
             #we have a key to the message specified
             #currently it can only be the topic
