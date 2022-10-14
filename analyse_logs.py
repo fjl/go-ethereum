@@ -61,6 +61,10 @@ def get_msg_df(log_path):
     return pd.DataFrame(rows)
 
 def get_op_df(log_path):
+    topic_mapping = {} #reverse engineer the topic hash
+    for i in range(1, 100):
+        topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
+
     operations = {} #indexed by opid
     for line in open(log_path + '/logs.json', 'r').readlines():
         #not a json line
@@ -80,6 +84,8 @@ def get_op_df(log_path):
             row['opid'] = opid
             row['method'] = jsons['method']
             row['reply_received'] = False
+            
+            jsons['params'][0] = int(topic_mapping[jsons['params'][0][2:]])#drop the 0x at the begining
             row['params'] = jsons['params']
             row['start_time'] = jsons['time']
         #it's a RPC reply
