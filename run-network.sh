@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 N_NODES=10
 DIR=discv5-test
-
 CONFIG_FILE=./discv5-stdconfig.json
 JSONLOGS=1
 
 # Args processing.
-while getopts ":c:n:Jjh" arg; do
+while getopts "c:n:Jjh" arg; do
   case ${arg} in
-    h) echo "Usage: $0 [ -J ] [ -c config.json ]"; exit 0 ;;
-    :) echo "$0: Must supply an argument to option -${OPTARG}." >&2; exit 1;;
-    '?') echo "Invalid option: -${OPTARG}"; exit 2;;
-
+    '?') exit 2 ;;
+    h) echo "Usage: $0 [ -J ] [ -n netsize ] [ -c config.json ]"; exit 0 ;;
     j) JSONLOGS=1 ;;
     J) JSONLOGS=0 ;;
     n) N_NODES=$OPTARG ;;
     c) CONFIG_FILE=$OPTARG ;;
   esac
 done
-
-
-rm  $DIR/logs/*
 
 # make_keys creates all node keys.
 make_keys() {
@@ -38,15 +34,13 @@ make_keys() {
 # get_node_url returns the enode URL of node $i.
 get_node_url() {
     let "port = 30200 + $1"
-    ./devp2p key to-enode --tcp 0 --udp $port "$DIR/keys/node-$1.key"
+    ./devp2p key to-enr --ip 127.0.0.1 --tcp 0 --udp $port "$DIR/keys/node-$1.key"
 }
 
 # start_nodes launches the node processes.
 start_nodes() {
     bootnode=$(get_node_url 1)
     echo "Bootstrap node: $bootnode"
-
-    mkdir -p "$DIR/logs"
 
     for i in $(seq $N_NODES); do
         let "port = 30200 + $i"
@@ -71,11 +65,28 @@ start_nodes() {
     done
 }
 
+# write_experiment creates experiment.json
+write_experiment() {
+    rm $DIR/experiment.json
+    cat >$DIR/experiment.json <<EOF
+    {
+        "nodes": ${N_NODES},
+        "rpcBasePort": 20200,
+        "config": $(cat $CONFIG_FILE)
+    }
+EOF
+}
+
 # Rebuild.
 go build ./cmd/devp2p
 
 # Generate all keys.
 make_keys
+
+# Initialize logs directory.
+mkdir -p "$DIR/logs"
+rm $DIR/logs/*
+write_experiment
 
 # Cleanup at exit.
 trap 'kill $(jobs -p)' EXIT

@@ -1,6 +1,6 @@
 {
-    "adCacheSize": 5,
-    "adLifetime": 60,
+    "adCacheSize": 100,
+    "adLifetimeSeconds": 10,
     "regBucketSize": 10,
     "searchBucketSize": 3
 }

@@ -175,6 +175,7 @@ func (reg *topicReg) run(sys *topicSystem) {
 
 		// Attempt queue updates.
 		case <-updateCh:
+			updateCh = nil
 			att := reg.state.Update()
 			if att != nil {
 				sendAttempt = att
@@ -184,8 +185,7 @@ func (reg *topicReg) run(sys *topicSystem) {
 		// Registration requests.
 		case sendAttemptCh <- sendAttempt:
 			reg.state.StartRequest(sendAttempt)
-			sendAttemptCh = nil
-			sendAttempt = nil
+			sendAttempt, sendAttemptCh = nil, nil
 
 		case resp := <-reg.regResponse:
 			if resp.err != nil {
@@ -198,7 +198,8 @@ func (reg *topicReg) run(sys *topicSystem) {
 			if len(msg.Ticket) > 0 {
 				reg.state.HandleTicketResponse(resp.att, msg.Ticket, wt)
 			} else {
-				reg.state.HandleRegistered(resp.att, wt, 10*time.Minute)
+				// No ticket - registration successful. WaitTime field means ad lifetime.
+				reg.state.HandleRegistered(resp.att, wt)
 			}
 		}
 	}

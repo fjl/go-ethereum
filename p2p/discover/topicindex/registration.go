@@ -151,7 +151,7 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 		}
 
 		// Create a new attempt.
-		att := &RegAttempt{Node: n, bucket: b}
+		att := &RegAttempt{Node: n, bucket: b, index: -1}
 		b.att[id] = att
 		b.count[att.State]++
 		r.refillAttempts(att.bucket)
@@ -227,12 +227,20 @@ func (r *Registration) StartRequest(att *RegAttempt) {
 		panic(fmt.Errorf("StartRequest for attempt with state=%v", att.State))
 	}
 	heap.Remove(&r.heap, att.index)
-	att.index = -1
+	att.index = -2
+}
+
+func (r *Registration) validate(att *RegAttempt) {
+	if att.index != -2 {
+		id := att.Node.ID().Bytes()
+		panic(fmt.Errorf("attempt (node %x state %s) has bad index %d", id[:8], att.State, att.index))
+	}
 }
 
 // HandleTicketResponse should be called when a node responds to a registration
 // request with a ticket and waiting time.
 func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
+	r.validate(att)
 	// TODO
 	//    - if wait time > max timeout, remove the attempt
 	//    - if number of retries too high, remove
@@ -243,15 +251,21 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 }
 
 // HandleRegistered should be called when a node confirms topic registration.
-func (r *Registration) HandleRegistered(att *RegAttempt, totalWaitTime time.Duration, ttl time.Duration) {
+func (r *Registration) HandleRegistered(att *RegAttempt, ttl time.Duration) {
+	r.validate(att)
+
 	r.log.Trace("Topic registration successful", "id", att.Node.ID())
 	r.setAttemptState(att, Registered)
 	att.NextTime = r.cfg.Clock.Now().Add(ttl)
 	heap.Push(&r.heap, att)
+
 	r.refillAttempts(att.bucket)
 }
 
+// HandleErrorResponse should be called when a registration attempt fails.
 func (r *Registration) HandleErrorResponse(att *RegAttempt, err error) {
+	r.validate(att)
+
 	r.log.Debug("Topic registration failed", "id", att.Node.ID(), "err", err)
 	r.removeAttempt(att)
 	r.refillAttempts(att.bucket)
@@ -265,7 +279,6 @@ func (r *Registration) removeAttempt(att *RegAttempt) {
 	r.log.Trace("Removing registration attempt", "id", att.Node.ID(), "state", att.State)
 	if att.index >= 0 {
 		heap.Remove(&r.heap, att.index)
-		att.index = -1
 	}
 	delete(att.bucket.att, nid)
 	att.bucket.count[att.State]--
@@ -309,8 +322,10 @@ func (rh *regHeap) Pop() interface{} {
 	old := *rh
 	n := len(old)
 	item := old[n-1]
+
 	old[n-1] = nil  // avoid memory leak
 	item.index = -1 // for safety
 	*rh = old[0 : n-1]
+
 	return item
 }

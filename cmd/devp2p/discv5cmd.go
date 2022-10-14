@@ -208,7 +208,9 @@ func loadConfig(file string) (*discv5NodeConfig, error) {
 	defer fd.Close()
 
 	var cfg discv5NodeConfig
-	if err := json.NewDecoder(fd).Decode(&cfg); err != nil {
+	dec := json.NewDecoder(fd)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
