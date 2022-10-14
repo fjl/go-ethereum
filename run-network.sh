@@ -6,14 +6,16 @@ N_NODES=10
 DIR=discv5-test
 CONFIG_FILE=./discv5-stdconfig.json
 JSONLOGS=1
+QUIET=0
 
 # Args processing.
-while getopts "c:n:Jjh" arg; do
+while getopts "c:n:qJjh" arg; do
   case ${arg} in
     '?') exit 2 ;;
     h) echo "Usage: $0 [ -J ] [ -n netsize ] [ -c config.json ]"; exit 0 ;;
     j) JSONLOGS=1 ;;
     J) JSONLOGS=0 ;;
+    q) QUIET=1 ;;
     n) N_NODES=$OPTARG ;;
     c) CONFIG_FILE=$OPTARG ;;
   esac
@@ -61,7 +63,11 @@ start_nodes() {
 
         # Start the node!
         echo "Starting node $i..."
-        ./devp2p $logflags discv5 listen $nodeflags 2>&1 | tee "$logfile" &
+        if [[ "$QUIET" = "1" ]]; then
+            ./devp2p $logflags discv5 listen $nodeflags 2>"$logfile" >"$logfile" &
+        else
+            ./devp2p $logflags discv5 listen $nodeflags 2>&1 | tee "$logfile" &
+        fi
     done
 }
 
