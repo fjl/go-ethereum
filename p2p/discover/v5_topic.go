@@ -105,13 +105,7 @@ type topicReg struct {
 	lookupResults chan []*enode.Node
 
 	regRequest  chan *topicindex.RegAttempt
-	regResponse chan regResponse
-}
-
-type regResponse struct {
-	att *topicindex.RegAttempt
-	msg *v5wire.Regconfirmation
-	err error
+	regResponse chan topicRegResult
 }
 
 func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topicReg {
@@ -126,11 +120,14 @@ func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topic
 		lookupTarget:  make(chan enode.ID),
 		lookupResults: make(chan []*enode.Node, 1),
 		regRequest:    make(chan *topicindex.RegAttempt),
-		regResponse:   make(chan regResponse),
+		regResponse:   make(chan topicRegResult),
 	}
-	reg.wg.Add(3)
+
+	// Initialize state with nodes from local table.
+	reg.state.AddNodes(sys.transport.tab.Nodes())
+
+	reg.wg.Add(2)
 	go reg.run(sys)
-	go reg.runLookups(sys)
 	go reg.runRequests(sys)
 	return reg
 }
@@ -168,11 +165,6 @@ func (reg *topicReg) run(sys *topicSystem) {
 			reg.lookupCancel()
 			return
 
-		// Lookup management.
-		case reg.lookupTarget <- reg.state.LookupTarget():
-		case nodes := <-reg.lookupResults:
-			reg.state.AddNodes(nodes)
-
 		// Attempt queue updates.
 		case <-updateCh:
 			updateCh = nil
@@ -192,59 +184,40 @@ func (reg *topicReg) run(sys *topicSystem) {
 				reg.state.HandleErrorResponse(resp.att, resp.err)
 				continue
 			}
-			msg := resp.msg
+
 			// TODO: handle overflow
-			wt := time.Duration(msg.WaitTime) * time.Second
-			if len(msg.Ticket) > 0 {
-				reg.state.HandleTicketResponse(resp.att, msg.Ticket, wt)
+			wt := time.Duration(resp.msg.WaitTime) * time.Second
+			if len(resp.msg.Ticket) > 0 {
+				reg.state.HandleTicketResponse(resp.att, resp.msg.Ticket, wt)
 			} else {
 				// No ticket - registration successful. WaitTime field means ad lifetime.
 				reg.state.HandleRegistered(resp.att, wt)
 			}
+
+			reg.state.AddNodes(resp.nodes)
 		}
 	}
 }
 
-func (reg *topicReg) runLookups(sys *topicSystem) {
-	defer reg.wg.Done()
+type topicRegResult struct {
+	msg   *v5wire.Regconfirmation
+	nodes []*enode.Node
+	err   error
 
-	for target := range reg.lookupTarget {
-		l := sys.transport.newLookup(reg.lookupCtx, target, reg.opid)
-		for l.advance() {
-			// Send results of this step over to the main loop.
-			nodes := unwrapNodes(l.replyBuffer)
-			select {
-			case reg.lookupResults <- nodes:
-			case <-reg.lookupCtx.Done():
-				return
-			}
-		}
-
-		// Wait a bit before starting the next lookup.
-		reg.sleep(2 * time.Second)
-	}
-}
-
-func (reg *topicReg) sleep(d time.Duration) {
-	sleep := reg.clock.NewTimer(d)
-	defer sleep.Stop()
-	select {
-	case <-sleep.C():
-	case <-reg.quit:
-	}
+	att *topicindex.RegAttempt
 }
 
 // runRequests performs topic registration requests.
 // TODO: this is not great because it sends one at a time and waits for a response.
-// registrations could just be sent async.
+// registrations could be sent more async.
 func (reg *topicReg) runRequests(sys *topicSystem) {
 	defer reg.wg.Done()
 
 	for attempt := range reg.regRequest {
 		n := attempt.Node
 		topic := reg.state.Topic()
-		resp := regResponse{att: attempt}
-		resp.msg, resp.err = sys.transport.topicRegister(n, topic, attempt.Ticket, reg.opid)
+		resp := sys.transport.regtopic(n, topic, attempt.Ticket, reg.opid)
+		resp.att = attempt
 
 		// Send response to main loop.
 		select {
