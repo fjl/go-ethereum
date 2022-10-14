@@ -248,12 +248,10 @@ func (r *Registration) Update() *RegAttempt {
 				r.removeAttempt(att)
 				r.refillAttempts(att.bucket)
 			}
-			return nil
 		case Waiting:
 			if now >= att.NextTime {
 				return att
 			}
-			return nil
 		}
 	}
 	return nil
