@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
+// This test checks basic assignment of nodes into registration buckets.
 func TestRegistrationBuckets(t *testing.T) {
 	cfg := testConfig(t)
 	r := NewRegistration(topic1, cfg)
@@ -37,10 +38,10 @@ func TestRegistrationBuckets(t *testing.T) {
 		close5  = nodesAtDistance(enode.ID(topic1), 5, 1)
 		close20 = nodesAtDistance(enode.ID(topic1), 20, 1)
 	)
-	r.AddNodes(far256)
-	r.AddNodes(far255)
-	r.AddNodes(close5)
-	r.AddNodes(close20)
+	r.AddNodes(nil, far256)
+	r.AddNodes(nil, far255)
+	r.AddNodes(nil, close5)
+	r.AddNodes(nil, close20)
 
 	last := len(r.buckets) - 1
 	if !rbContainsAll(r.buckets[last], far256) {
@@ -66,6 +67,43 @@ func rbContainsAll(b regBucket, nodes []*enode.Node) bool {
 	return true
 }
 
+// This checks that the one-per-bucket rule is applied in AddNodes.
+func TestRegistrationOnePerBucketCheck(t *testing.T) {
+	cfg := testConfig(t)
+	r := NewRegistration(topic1, cfg)
+	src := nodeAtDistance(enode.ID(topic1), 255, intIP(1))
+
+	// Attempt to insert multiple nodes in the same bucket.
+	// Only one of them should actually be added.
+	nodes := nodesAtDistance(enode.ID(topic1), 200, 10)
+	r.AddNodes(src, nodes)
+	if r.NodeCount() > 1 {
+		t.Fatal("too many nodes added")
+	}
+}
+
+// This checks that the per-bucket IP limit is applied in AddNodes.
+func TestRegistrationIPCheck(t *testing.T) {
+	cfg := testConfig(t)
+	r := NewRegistration(topic1, cfg)
+	src1 := nodeAtDistance(enode.ID(topic1), 255, intIP(1))
+	src2 := nodeAtDistance(enode.ID(topic1), 255, intIP(1))
+
+	// Attempt to insert nodes with same IP in one bucket.
+	// Only one of them should actually be added.
+	// This needs to be done across multiple AddNodes calls to avoid
+	// the one-per-bucket check.
+
+	node1 := nodeAtDistance(enode.ID(topic1), 200, net.IP{192, 0, 2, 1})
+	node2 := nodeAtDistance(enode.ID(topic1), 200, net.IP{192, 0, 2, 2})
+	r.AddNodes(src1, []*enode.Node{node1})
+	r.AddNodes(src2, []*enode.Node{node2})
+
+	if r.NodeCount() > 1 {
+		t.Fatal("too many nodes added")
+	}
+}
+
 // This test checks that registration attempts are created for found nodes.
 func TestRegistrationRequests(t *testing.T) {
 	cfg := testConfig(t)
@@ -79,7 +117,7 @@ func TestRegistrationRequests(t *testing.T) {
 	target := enode.ID(r.Topic())
 	for i := 50; i < 256; i++ {
 		nodes := nodesAtDistance(target, i, 5)
-		r.AddNodes(nodes)
+		r.AddNodes(nil, nodes)
 	}
 
 	req := r.Update()
@@ -109,7 +147,7 @@ func TestRegistrationExpiry(t *testing.T) {
 
 	// Deliver some nodes.
 	node := nodesAtDistance(enode.ID(r.Topic()), 30, 1)
-	r.AddNodes(node)
+	r.AddNodes(nil, node)
 
 	// A registration attempt should be created.
 	att := r.Update()
@@ -142,7 +180,7 @@ func TestRegistrationExpiry(t *testing.T) {
 
 	// Re-add the node.
 	simclock.Run(1 * time.Second)
-	r.AddNodes(node)
+	r.AddNodes(nil, node)
 
 	// It should get scheduled for registration again.
 	att = r.Update()

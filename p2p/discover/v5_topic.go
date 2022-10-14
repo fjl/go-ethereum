@@ -213,7 +213,7 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 				reg.state.HandleRegistered(resp.att, wt)
 			}
 
-			reg.state.AddNodes(resp.nodes)
+			reg.state.AddNodes(resp.att.Node, resp.nodes)
 		}
 	}
 }

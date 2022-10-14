@@ -24,9 +24,13 @@ import (
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
 const (
+	// IP subnet limit.
+	regBucketSubnet, regBucketIPLimit = 24, 1
+
 	regBucketMaxReplacements = 20
 
 	// regTableDepth is the number of buckets kept in the registration table.
@@ -46,6 +50,8 @@ type Registration struct {
 	// Note: registration buckets are ordered close -> far.
 	buckets [regTableDepth]regBucket
 	heap    regHeap
+
+	bucketCheck map[int]struct{}
 }
 
 //go:generate go run golang.org/x/tools/cmd/stringer@latest -type RegAttemptState
@@ -57,6 +63,8 @@ type regBucket struct {
 	dist  int
 	att   map[enode.ID]*RegAttempt
 	count [nRegStates]int
+
+	ips netutil.DistinctNetSet
 }
 
 const (
@@ -96,14 +104,18 @@ type RegAttempt struct {
 func NewRegistration(topic TopicID, cfg Config) *Registration {
 	cfg = cfg.withDefaults()
 	r := &Registration{
-		topic: topic,
-		cfg:   cfg,
-		log:   cfg.Log.New("topic", topic),
+		topic:       topic,
+		cfg:         cfg,
+		log:         cfg.Log.New("topic", topic),
+		bucketCheck: make(map[int]struct{}, regTableDepth),
 	}
 	dist := 256
 	for i := range r.buckets {
-		r.buckets[i].att = make(map[enode.ID]*RegAttempt)
-		r.buckets[i].dist = dist - (len(r.buckets) - 1) + i
+		r.buckets[i] = regBucket{
+			att:  make(map[enode.ID]*RegAttempt),
+			dist: dist - (len(r.buckets) - 1) + i,
+			ips:  netutil.DistinctNetSet{Subnet: regBucketSubnet, Limit: regBucketIPLimit},
+		}
 	}
 	return r
 }
@@ -125,14 +137,23 @@ func (r *Registration) NodeCount() int {
 }
 
 // AddNodes notifies the registration process about found nodes.
-func (r *Registration) AddNodes(nodes []*enode.Node) {
+//
+// 'src' is the source of the nodes.
+func (r *Registration) AddNodes(src *enode.Node, nodes []*enode.Node) {
+	// Clear the one-per-bucket checker.
+	for i := range r.bucketCheck {
+		delete(r.bucketCheck, i)
+	}
+
+	// Add the nodes.
 	for _, n := range nodes {
 		id := n.ID()
 		if id == r.cfg.Self {
 			continue
 		}
 
-		b := r.bucket(id)
+		bi := r.bucketIndex(id)
+		b := &r.buckets[bi]
 		attempt, ok := b.att[id]
 		if ok {
 			// There is already an attempt scheduled with this node.
@@ -142,10 +163,28 @@ func (r *Registration) AddNodes(nodes []*enode.Node) {
 			}
 			continue
 		}
-		// The node is not in the table yet.
+
+		if src != nil {
+			// The node is supplied by a remote registrar. Enforce 'one-per-bucket' rule:
+			// in the list given by the registrar, there should be at most one node for
+			// every registration bucket. This avoids attacks where a single registrar can
+			// dominate a bucket.
+			if _, ok := r.bucketCheck[bi]; ok {
+				r.log.Debug("Ignoring registration node", "id", n.ID(), "reason", "one-per-bucket-rule")
+				continue
+			}
+			r.bucketCheck[bi] = struct{}{}
+		}
 
 		if b.count[Standby] >= regBucketMaxReplacements {
-			// There are enough replacements already, ignore the node.
+			// There are enough replacements already.
+			continue
+		}
+
+		ip := n.IP()
+		if ip != nil && !netutil.IsLAN(ip) && !b.ips.Add(n.IP()) {
+			// IP doesn't fit in bucket limit.
+			r.log.Debug("Ignoring registration node", "id", n.ID(), "reason", "iplimit")
 			continue
 		}
 
@@ -287,12 +326,16 @@ func (r *Registration) removeAttempt(att *RegAttempt) {
 }
 
 func (r *Registration) bucket(id enode.ID) *regBucket {
+	return &r.buckets[r.bucketIndex(id)]
+}
+
+func (r *Registration) bucketIndex(id enode.ID) int {
 	dist := enode.LogDist(enode.ID(r.topic), id)
 	index := dist - 256 + (len(r.buckets) - 1)
 	if index < 0 {
 		index = 0
 	}
-	return &r.buckets[index]
+	return index
 }
 
 // regHeap is a priority queue of registration attempts. This should not be accessed
