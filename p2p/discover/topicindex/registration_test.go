@@ -75,10 +75,8 @@ func TestRegistrationRequests(t *testing.T) {
 		t.Fatal("request spawned on fresh Registration")
 	}
 
-	target := r.LookupTarget()
-	t.Logf("lookup target: %x", target[:])
-
 	// Deliver some nodes.
+	target := enode.ID(r.Topic())
 	for i := 50; i < 256; i++ {
 		nodes := nodesAtDistance(target, i, 5)
 		r.AddNodes(nodes)
@@ -96,7 +94,7 @@ func TestRegistrationRequests(t *testing.T) {
 	if r.Update() == req {
 		t.Fatal("top request not removed")
 	}
-	r.HandleRegistered(req, 1*time.Second, 10*time.Minute)
+	r.HandleRegistered(req, cfg.AdLifetime)
 }
 
 // This test checks that registration attempts expire after the lifetime
@@ -124,7 +122,7 @@ func TestRegistrationExpiry(t *testing.T) {
 
 	// Mark registration to successful.
 	r.StartRequest(att)
-	r.HandleRegistered(att, 1*time.Second, cfg.AdLifetime)
+	r.HandleRegistered(att, cfg.AdLifetime)
 
 	// NextUpdateTime should now return the expiry time of the ad.
 	now := simclock.Now()
