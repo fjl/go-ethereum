@@ -278,7 +278,7 @@ func (p *Regconfirmation) RequestID() []byte      { return p.ReqID }
 func (p *Regconfirmation) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regconfirmation) AppendLogInfo(ctx []interface{}) []interface{} {
-	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID), "ok", p.Ticket != nil, "wtime", p.WaitTime)
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID), "ok", p.Ticket == nil, "wtime", p.WaitTime)
 	if p.CumulativeWaitTime != nil {
 		ctx = append(ctx, "total-wtime", *p.CumulativeWaitTime)
 	}
