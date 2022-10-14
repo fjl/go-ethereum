@@ -145,7 +145,7 @@ func (reg *topicReg) run(sys *topicSystem) {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		reg.state.AddNodes(nodes)
+		reg.state.AddNodes(nil, nodes)
 
 		if exit := reg.runRegistration(sys); exit {
 			return
@@ -205,7 +205,8 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 			}
 
 			// TODO: handle overflow
-			wt := time.Duration(resp.msg.WaitTime) * time.Second
+			wt := time.Duration(resp.msg.WaitTime) * time.Millisecond
+
 			if len(resp.msg.Ticket) > 0 {
 				reg.state.HandleTicketResponse(resp.att, resp.msg.Ticket, wt)
 			} else {

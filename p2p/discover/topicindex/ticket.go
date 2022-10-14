@@ -44,9 +44,9 @@ const (
 type Ticket struct {
 	KeyID          uint16
 	Topic          TopicID
-	WaitTimeTotal  time.Duration
 	WaitTimeIssued time.Duration
 	LastUsed       mclock.AbsTime
+	FirstIssued    mclock.AbsTime
 }
 
 func (t Ticket) isValidAt(now mclock.AbsTime) bool {

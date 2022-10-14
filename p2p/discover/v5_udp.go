@@ -1041,30 +1041,40 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		return
 	}
 
-	// Attempt to register.
+	// Compute total wait time of requesting node.
 	now := t.clock.Now()
-	timeSinceLastUsed := now.Sub(ticket.LastUsed)
-	waitTime := ticket.WaitTimeTotal + timeSinceLastUsed
+	waitTime := time.Duration(0)
+	if len(p.Ticket) > 0 {
+		// For a response with a ticket, add the elapsed time since the
+		// last request to the total wait time.
+		waitTime = now.Sub(ticket.FirstIssued)
+	}
+
+	// Attempt to register.
 	newTime := t.topicTable.Register(n, ticket.Topic, waitTime)
 
 	confirmation := &v5wire.Regconfirmation{ReqID: p.ReqID}
 	if newTime > 0 {
+		firstIssued := ticket.FirstIssued
+		if len(p.Ticket) == 0 {
+			firstIssued = now
+		}
+
 		// Node was not registered. Credit waiting time and return a new ticket.
-		confirmation.WaitTime = uint(newTime / time.Second)
+		confirmation.WaitTime = waitTimeToMs(newTime)
 		confirmation.Ticket = t.ticketSealer.Pack(&topicindex.Ticket{
 			Topic:          p.Topic,
-			WaitTimeTotal:  waitTime,
 			WaitTimeIssued: newTime,
 			LastUsed:       now,
+			FirstIssued:    firstIssued,
 		})
 	} else {
-		// Add cumulative waiting time in logs.
+		// Add cumulative waiting time in the packet logs.
 		// This is here for analysis purposes.
-		totalWaitTimeSeconds := uint(math.Trunc(waitTime.Seconds()))
+		totalWaitTimeSeconds := waitTimeToMs(waitTime)
 		confirmation.CumulativeWaitTime = &totalWaitTimeSeconds
 
-		// TODO: put reasonable bounds on ad lifetime
-		confirmation.WaitTime = uint(t.topicTable.AdLifetime() / time.Second)
+		confirmation.WaitTime = waitTimeToMs(t.topicTable.AdLifetime())
 	}
 	t.sendResponse(fromID, fromAddr, confirmation)
 
@@ -1073,4 +1083,8 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 	for _, msg := range packNodes(p.ReqID, unwrapNodes(nodes.entries)) {
 		t.sendResponse(fromID, fromAddr, msg)
 	}
+}
+
+func waitTimeToMs(d time.Duration) uint {
+	return uint(math.Ceil(d.Seconds() * 1000))
 }
