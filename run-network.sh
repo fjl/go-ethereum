@@ -67,7 +67,7 @@ start_nodes() {
 
 # write_experiment creates experiment.json
 write_experiment() {
-    rm $DIR/experiment.json
+    rm -f $DIR/experiment.json
     cat >$DIR/experiment.json <<EOF
     {
         "nodes": ${N_NODES},
