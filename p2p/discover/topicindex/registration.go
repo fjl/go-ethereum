@@ -245,7 +245,7 @@ func (r *Registration) Update() *RegAttempt {
 			panic("standby attempt in Registration.heap")
 		case Registered:
 			if now >= att.NextTime {
-				r.removeAttempt(att)
+				r.removeAttempt(att, "expired")
 				r.refillAttempts(att.bucket)
 			}
 		case Waiting:
@@ -280,9 +280,17 @@ func (r *Registration) validate(att *RegAttempt) {
 // request with a ticket and waiting time.
 func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
 	r.validate(att)
-	// TODO
-	//    - if wait time > max timeout, remove the attempt
-	//    - if number of retries too high, remove
+
+	// Drop the attempt when the registrar makes us wait for longer than AdLifetime. This
+	// works because the entire ad cache will have been rotated after one lifetime, and so
+	// the registrar must be misbehaving.
+	att.TotalWaitTime += waitTime
+	if att.TotalWaitTime > r.cfg.AdLifetime {
+		r.removeAttempt(att, "wtime-too-high")
+		return
+	}
+
+	// TODO: do we need to introduce maximum retry counter here?
 
 	att.Ticket = ticket
 	att.NextTime = r.cfg.Clock.Now().Add(waitTime)
@@ -292,6 +300,11 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 // HandleRegistered should be called when a node confirms topic registration.
 func (r *Registration) HandleRegistered(att *RegAttempt, ttl time.Duration) {
 	r.validate(att)
+
+	// Prevent registrar from announcing an out-of-bounds ad lifetime.
+	if ttl > r.cfg.AdLifetime {
+		ttl = r.cfg.AdLifetime
+	}
 
 	r.log.Trace("Topic registration successful", "id", att.Node.ID())
 	r.setAttemptState(att, Registered)
@@ -306,16 +319,16 @@ func (r *Registration) HandleErrorResponse(att *RegAttempt, err error) {
 	r.validate(att)
 
 	r.log.Debug("Topic registration failed", "id", att.Node.ID(), "err", err)
-	r.removeAttempt(att)
+	r.removeAttempt(att, "error")
 	r.refillAttempts(att.bucket)
 }
 
-func (r *Registration) removeAttempt(att *RegAttempt) {
+func (r *Registration) removeAttempt(att *RegAttempt, reason string) {
 	nid := att.Node.ID()
 	if att.bucket.att[nid] != att {
 		panic("trying to delete non-existent attempt")
 	}
-	r.log.Trace("Removing registration attempt", "id", att.Node.ID(), "state", att.State)
+	r.log.Trace("Removing registration attempt", "id", att.Node.ID(), "state", att.State, "reason", reason)
 	if att.index >= 0 {
 		heap.Remove(&r.heap, att.index)
 	}
