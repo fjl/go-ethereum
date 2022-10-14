@@ -140,6 +140,10 @@ func (tab *Table) seedRand() {
 
 // Nodes returns all nodes contained in the table.
 func (tab *Table) Nodes() []*enode.Node {
+	if !tab.isInitDone() {
+		return nil
+	}
+
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 

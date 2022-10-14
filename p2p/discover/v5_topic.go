@@ -123,9 +123,6 @@ func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topic
 		regResponse:   make(chan topicRegResult),
 	}
 
-	// Initialize state with nodes from local table.
-	reg.state.AddNodes(sys.transport.tab.Nodes())
-
 	reg.wg.Add(2)
 	go reg.run(sys)
 	go reg.runRequests(sys)
@@ -138,6 +135,23 @@ func (reg *topicReg) stop() {
 }
 
 func (reg *topicReg) run(sys *topicSystem) {
+	for {
+		// Initialize the registration state.
+		nodes := sys.transport.tab.Nodes()
+		if len(nodes) == 0 {
+			// Local table is empty, retry later.
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		reg.state.AddNodes(nodes)
+		if exit := reg.runRegistration(sys); exit {
+			return
+		}
+	}
+}
+
+func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 	defer reg.wg.Done()
 
 	var (
@@ -148,6 +162,11 @@ func (reg *topicReg) run(sys *topicSystem) {
 	)
 
 	for {
+		if reg.state.NodeCount() == 0 {
+			// State ran out of nodes, re-initialize.
+			return false
+		}
+
 		// Disable updates while dispatching the next attempt's request.
 		if sendAttempt == nil {
 			next := reg.state.NextUpdateTime()
@@ -163,7 +182,7 @@ func (reg *topicReg) run(sys *topicSystem) {
 			close(reg.regRequest)
 			close(reg.lookupTarget)
 			reg.lookupCancel()
-			return
+			return true
 
 		// Attempt queue updates.
 		case <-updateCh:
