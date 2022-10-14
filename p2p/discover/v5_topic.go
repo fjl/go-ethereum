@@ -135,6 +135,8 @@ func (reg *topicReg) stop() {
 }
 
 func (reg *topicReg) run(sys *topicSystem) {
+	defer reg.wg.Done()
+
 	for {
 		// Initialize the registration state.
 		nodes := sys.transport.tab.Nodes()
@@ -143,8 +145,8 @@ func (reg *topicReg) run(sys *topicSystem) {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-
 		reg.state.AddNodes(nodes)
+
 		if exit := reg.runRegistration(sys); exit {
 			return
 		}
@@ -152,8 +154,6 @@ func (reg *topicReg) run(sys *topicSystem) {
 }
 
 func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
-	defer reg.wg.Done()
-
 	var (
 		updateEv      = mclock.NewAlarm(reg.clock)
 		updateCh      <-chan struct{}
