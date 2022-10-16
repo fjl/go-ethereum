@@ -94,8 +94,10 @@ type RegAttempt struct {
 	// Ticket contains the ticket data returned by the last registration call.
 	Ticket []byte
 
-	// TotalWaitTime is the time spent waiting so far.
-	TotalWaitTime time.Duration
+	// totalWaitTime is the time spent waiting so far.
+	totalWaitTime time.Duration
+	// reqCount tracks the number of registration requests sent.
+	reqCount int
 
 	index  int // index in regHeap
 	bucket *regBucket
@@ -267,6 +269,7 @@ func (r *Registration) StartRequest(att *RegAttempt) {
 	}
 	heap.Remove(&r.heap, att.index)
 	att.index = -2
+	att.reqCount++
 }
 
 func (r *Registration) validate(att *RegAttempt) {
@@ -280,17 +283,17 @@ func (r *Registration) validate(att *RegAttempt) {
 // request with a ticket and waiting time.
 func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, waitTime time.Duration) {
 	r.validate(att)
+	att.totalWaitTime += waitTime
 
 	// Drop the attempt when the registrar makes us wait for longer than AdLifetime. This
 	// works because the entire ad cache will have been rotated after one lifetime, and so
-	// the registrar must be misbehaving.
-	att.TotalWaitTime += waitTime
-	if att.TotalWaitTime > r.cfg.AdLifetime {
+	// the registrar must be misbehaving if they didn't accept
+	if att.reqCount > 1 && att.totalWaitTime > r.cfg.AdLifetime {
 		r.removeAttempt(att, "wtime-too-high")
 		return
 	}
 
-	// TODO: do we need to introduce maximum retry counter here?
+	// TODO: should a maximum number of retries be enforced here?
 
 	att.Ticket = ticket
 	att.NextTime = r.cfg.Clock.Now().Add(waitTime)
