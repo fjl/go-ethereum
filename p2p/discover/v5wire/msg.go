@@ -17,7 +17,6 @@
 package v5wire
 
 import (
-	"encoding/hex"
 	"fmt"
 	"net"
 
@@ -259,13 +258,13 @@ func (p *TalkResponse) AppendLogInfo(ctx []interface{}) []interface{} {
 	return append(ctx, "req", p.ReqID, "len", len(p.Message))
 }
 
-func (p *Regtopic) Name() string           { return "REGTOPIC/v5:" + hex.EncodeToString(p.Topic[:]) }
-func (p *Regtopic) Kind() byte             { return RegtopicMsg }
+func (*Regtopic) Name() string             { return "REGTOPIC/v5" }
+func (*Regtopic) Kind() byte               { return RegtopicMsg }
 func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regtopic) AppendLogInfo(ctx []interface{}) []interface{} {
-	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID))
+	ctx = append(ctx, "topic", (*enode.ID)(&p.Topic), "req", hexutil.Bytes(p.ReqID))
 	if p.OpID != 0 {
 		ctx = append(ctx, "opid", p.OpID)
 	}
@@ -291,13 +290,13 @@ func (p *Regconfirmation) AppendLogInfo(ctx []interface{}) []interface{} {
 	return ctx
 }
 
-func (p *TopicQuery) Name() string           { return "TOPICQUERY/v5:" + hex.EncodeToString(p.Topic[:]) }
+func (*TopicQuery) Name() string             { return "TOPICQUERY/v5" }
 func (*TopicQuery) Kind() byte               { return TopicQueryMsg }
 func (p *TopicQuery) RequestID() []byte      { return p.ReqID }
 func (p *TopicQuery) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *TopicQuery) AppendLogInfo(ctx []interface{}) []interface{} {
-	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID))
+	ctx = append(ctx, "topic", (*enode.ID)(&p.Topic), "req", hexutil.Bytes(p.ReqID))
 	if p.OpID != 0 {
 		ctx = append(ctx, "opid", p.OpID)
 	}
