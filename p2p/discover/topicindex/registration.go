@@ -69,8 +69,7 @@ const (
 	Standby RegAttemptState = iota
 	Waiting
 	Registered
-
-	nRegStates = int(Registered) + 1
+	nRegStates int = iota
 )
 
 // RegAttempt contains the state of the registration process against
@@ -94,6 +93,7 @@ type RegAttempt struct {
 
 	// totalWaitTime is the time spent waiting so far.
 	totalWaitTime time.Duration
+
 	// reqCount tracks the number of registration requests sent.
 	reqCount int
 
