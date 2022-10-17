@@ -1,6 +1,10 @@
 {
-    "adCacheSize": 100,
-    "adLifetimeSeconds": 10,
+    "pingInterval": 10,
+    "bucketRefreshInterval": 60,
+
+    "adCacheSize": 5,
+    "adLifetimeSeconds": 60,
     "regBucketSize": 10,
+    "regBucketStandbySize": 20,
     "searchBucketSize": 3
 }
