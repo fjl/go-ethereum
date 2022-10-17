@@ -183,9 +183,12 @@ func discv5Listen(ctx *cli.Context) error {
 func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 	ln, config := makeDiscoveryConfig(ctx)
 	if extConfig != nil {
+		config.PingInterval = time.Duration(extConfig.PingInterval) * time.Second
+		config.RefreshInterval = time.Duration(extConfig.BucketRefreshInterval) * time.Second
 		config.Topic.AdCacheSize = extConfig.AdCacheSize
 		config.Topic.AdLifetime = time.Duration(extConfig.AdLifetimeSeconds) * time.Second
 		config.Topic.RegBucketSize = extConfig.RegBucketSize
+		config.Topic.RegBucketStandbyLimit = extConfig.RegBucketStandbySize
 		config.Topic.RegAttemptTimeout = time.Duration(extConfig.RegTimeoutSeconds) * time.Second
 		config.Topic.SearchBucketSize = extConfig.SearchBucketSize
 	}
@@ -204,12 +207,19 @@ func startV5(ctx *cli.Context, extConfig *discv5NodeConfig) *discover.UDPv5 {
 const defaultSearchTimeout = 120 * time.Second
 
 type discv5NodeConfig struct {
-	AdCacheSize       int `json:"adCacheSize"`
-	AdLifetimeSeconds int `json:"adLifetimeSeconds"`
-	RegBucketSize     int `json:"regBucketSize"`
-	RegTimeoutSeconds int `json:"regTimeoutSeconds"`
-	SearchBucketSize  int `json:"searchBucketSize"`
+	// Node table config:
+	PingInterval          int `json:"pingInterval"`
+	BucketRefreshInterval int `json:"bucketRefreshInterval"`
 
+	// Topic system config:
+	AdCacheSize          int `json:"adCacheSize"`
+	AdLifetimeSeconds    int `json:"adLifetimeSeconds"`
+	RegBucketSize        int `json:"regBucketSize"`
+	RegBucketStandbySize int `json:"regBucketStandbySize"`
+	RegTimeoutSeconds    int `json:"regTimeoutSeconds"`
+	SearchBucketSize     int `json:"searchBucketSize"`
+
+	// RPC config:
 	SearchTimeoutSeconds int `json:"searchTimeoutSeconds"`
 }
 
