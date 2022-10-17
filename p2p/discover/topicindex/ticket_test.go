@@ -31,7 +31,7 @@ func TestTicketSealerSimple(t *testing.T) {
 
 	ticket := &Ticket{
 		Topic:          topic1,
-		WaitTimeTotal:  5 * time.Minute,
+		FirstIssued:    clock.Now(),
 		WaitTimeIssued: 1 * time.Minute,
 		LastUsed:       clock.Now(),
 	}
@@ -57,7 +57,7 @@ func TestTicketSealerInvalid(t *testing.T) {
 
 	enc := ts.Pack(&Ticket{
 		Topic:          topic1,
-		WaitTimeTotal:  5 * time.Minute,
+		FirstIssued:    clock.Now(),
 		WaitTimeIssued: 5 * time.Minute,
 		LastUsed:       clock.Now(),
 	})
@@ -84,7 +84,7 @@ func TestTicketSealerKeyRotation(t *testing.T) {
 	for i := 0; i < ticketRekeyInterval*2; i++ {
 		ticket := &Ticket{
 			Topic:          topic1,
-			WaitTimeTotal:  5 * time.Minute,
+			FirstIssued:    clock.Now(),
 			WaitTimeIssued: ticketKeyLifetime - 3,
 			LastUsed:       clock.Now(),
 		}

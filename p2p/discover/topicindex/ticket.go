@@ -44,9 +44,9 @@ const (
 type Ticket struct {
 	KeyID          uint16
 	Topic          TopicID
-	WaitTimeIssued time.Duration
-	LastUsed       mclock.AbsTime
-	FirstIssued    mclock.AbsTime
+	WaitTimeIssued time.Duration  // wait time returned in last REGCONFIRMATION
+	LastUsed       mclock.AbsTime // last request in this waiting session
+	FirstIssued    mclock.AbsTime // creation time of first ticket in this waiting session
 }
 
 func (t Ticket) isValidAt(now mclock.AbsTime) bool {
