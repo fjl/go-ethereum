@@ -47,7 +47,10 @@ func TestTopicReg(t *testing.T) {
 // This test checks that topic registration will pick up new nodes
 // when they are added to the main node table.
 func TestTopicRegNodeTableUpdates(t *testing.T) {
-	test := newUDPV5Test(t)
+	cfg := Config{
+		PingInterval: 1 * time.Second,
+	}
+	test := newUDPV5Test(t, cfg)
 	defer test.close()
 
 	var (
@@ -55,24 +58,39 @@ func TestTopicRegNodeTableUpdates(t *testing.T) {
 		key2, ln2 = test.createNode(2)
 	)
 
-	// node1 is in the local table before registration begins.
-	test.table.addVerifiedNode(wrapNode(ln1.Node()))
-
 	// Catch registration attempt with node1.
+	test.table.addSeenNode(wrapNode(ln1.Node()))
 	test.udp.RegisterTopic(testTopic1, 1)
-	test.waitPacketOut(func(p *v5wire.Regtopic, addr *net.UDPAddr, _ v5wire.Nonce) {
-		test.packetInFrom(key1, addr, &v5wire.Regconfirmation{
-			ReqID:    p.ReqID,
-			Ticket:   nil, // successfully registered
-			WaitTime: 900000,
+
+	var gotRegtopic, gotPing bool
+	for !gotRegtopic || !gotPing {
+		test.waitPacketOut(func(p v5wire.Packet, addr *net.UDPAddr, _ v5wire.Nonce) {
+			if !addr.IP.Equal(ln1.Node().IP()) {
+				t.Fatal(p.Name(), "to wrong node", addr, "want", ln1.Node().IP())
+			}
+			switch p := p.(type) {
+			case *v5wire.Ping:
+				test.packetInFrom(key1, addr, &v5wire.Pong{
+					ReqID: p.ReqID,
+				})
+				gotPing = true
+			case *v5wire.Regtopic:
+				test.packetInFrom(key1, addr, &v5wire.Regconfirmation{
+					ReqID:    p.ReqID,
+					Ticket:   nil, // successfully registered
+					WaitTime: 900000,
+				})
+				gotRegtopic = true
+			}
 		})
-	})
+	}
 
 	// Now add node2 and wait for the table to verify its liveness.
 	test.table.addSeenNode(wrapNode(ln2.Node()))
+
 	test.waitPacketOut(func(p *v5wire.Ping, addr *net.UDPAddr, _ v5wire.Nonce) {
 		if !addr.IP.Equal(ln2.Node().IP()) {
-			t.Fatal("PING to wrong node", addr)
+			t.Fatal(p.Name(), "to wrong node", addr)
 		}
 		test.packetInFrom(key2, addr, &v5wire.Pong{
 			ReqID: p.ReqID,
@@ -81,7 +99,10 @@ func TestTopicRegNodeTableUpdates(t *testing.T) {
 
 	// A registration attempt should be made with node2.
 	test.waitPacketOut(func(p *v5wire.Regtopic, addr *net.UDPAddr, _ v5wire.Nonce) {
-		test.packetIn(&v5wire.Regconfirmation{
+		if !addr.IP.Equal(ln2.Node().IP()) {
+			t.Fatal(p.Name(), "to wrong node", addr)
+		}
+		test.packetInFrom(key2, addr, &v5wire.Regconfirmation{
 			ReqID:    p.ReqID,
 			Ticket:   nil, // successfully registered
 			WaitTime: 900000,
