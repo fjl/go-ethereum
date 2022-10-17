@@ -34,8 +34,9 @@ type Config struct {
 	AdCacheSize int
 
 	// Registration settings.
-	RegBucketSize     int // number of nodes per registration bucket
-	RegAttemptTimeout time.Duration
+	RegBucketSize         int           // max/ number of active nodes in registration bucket
+	RegBucketStandbyLimit int           // max. number of 'standby' state nodes in bucket
+	RegAttemptTimeout     time.Duration // maximum amount of time to wait on one attempt
 
 	// Search settings.
 	SearchBucketSize int // number of nodes in search buckets
@@ -62,6 +63,9 @@ func (cfg Config) withDefaults() Config {
 	}
 	if cfg.RegBucketSize == 0 {
 		cfg.RegBucketSize = 10
+	}
+	if cfg.RegBucketStandbyLimit == 0 {
+		cfg.RegBucketStandbyLimit = 20
 	}
 	if cfg.SearchBucketSize == 0 {
 		cfg.SearchBucketSize = 8

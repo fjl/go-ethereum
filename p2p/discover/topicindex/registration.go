@@ -31,8 +31,6 @@ const (
 	// IP subnet limit.
 	regBucketSubnet, regBucketIPLimit = 24, 1
 
-	regBucketMaxReplacements = 20
-
 	// regTableDepth is the number of buckets kept in the registration table.
 	//
 	// The table only keeps nodes at logdist(topic, n) > (256 - regTableDepth).
@@ -178,7 +176,7 @@ func (r *Registration) AddNodes(src *enode.Node, nodes []*enode.Node) {
 			r.bucketCheck[bi] = struct{}{}
 		}
 
-		if b.count[Standby] >= regBucketMaxReplacements {
+		if b.count[Standby] >= r.cfg.RegBucketStandbyLimit {
 			// There are enough replacements already.
 			continue
 		}
