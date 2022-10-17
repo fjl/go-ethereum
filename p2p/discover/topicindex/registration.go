@@ -307,7 +307,7 @@ func (r *Registration) HandleRegistered(att *RegAttempt, ttl time.Duration) {
 		ttl = r.cfg.AdLifetime
 	}
 
-	r.log.Trace("Topic registration successful", "id", att.Node.ID())
+	r.log.Trace("Topic registration successful", "id", att.Node.ID(), "adlifetime", ttl)
 	r.setAttemptState(att, Registered)
 	att.NextTime = r.cfg.Clock.Now().Add(ttl)
 	heap.Push(&r.heap, att)
