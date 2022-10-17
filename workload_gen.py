@@ -30,6 +30,7 @@ NODE_ID = 0
 OP_ID = 100
 LOGS = queue.Queue()
 PROCESSES = []
+MAX_REQUEST_THREADS = 128
 
 def gen_op_id():
     global OP_ID
@@ -75,13 +76,12 @@ def send_register(node, topic, config, op_id):
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
     LOGS.put(payload)
+
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
-    print(payload)
     resp = requests.post(node_api_url(node, config), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     LOGS.put(resp)
-    print("Register response: ", resp)
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator
@@ -193,7 +193,8 @@ def wait_for_nodes_ready(config):
     min_neighbors = min(config['nodes']-1, 10)
     nodes = list(range(1, config['nodes'] + 1))
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    global MAX_REQUEST_THREADS
+    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
         while len(nodes) > 0:
             print('waiting for {} nodes to become ready'.format(len(nodes)))
             # submit check requests
@@ -231,8 +232,8 @@ def register_topics(zipf, config):
     # send a registration at exponentially distributed
     # times with average inter departure time of 1/rate
 
-    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
-
+    global MAX_REQUEST_THREADS
+    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
         while (len(nodes) > 0):
             time_now = float(time.time())
             if time_next > time_now:
@@ -254,7 +255,8 @@ def search_topics(zipf, config, node_to_topic):
     node = random.choice(nodes)
     nodes = list(range(1, config['nodes'] + 1))
 
-    with ThreadPoolExecutor(max_workers=len(nodes)) as executor:
+    global MAX_REQUEST_THREADS
+    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
         for node in nodes:
             topic = node_to_topic[node]
             PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
@@ -263,22 +265,22 @@ def search_topics(zipf, config, node_to_topic):
 def send_lookup(node, topic, config, op_id):
     global LOGS
     topic_digest = get_topic_digest(topic)
+    want_num_results = 1
     payload = {
         "method": "discv5_topicSearch",
-        "params": [topic_digest, 1, op_id],
+        "params": [topic_digest, want_num_results, op_id],
         "jsonrpc": "2.0",
         "id": op_id,
     }
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
     LOGS.put(payload)
-    print(payload)
 
-    print('Node:', node, 'is searching for topic:', topic)
+    print('Node {} is searching for {} nodes in topic: {}'.format(node, want_num_results, topic))
     resp = requests.post(node_api_url(node, config), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    print('Lookup response: ', resp)
+    print('Search response: ', resp)
     LOGS.put(resp)
 
 
