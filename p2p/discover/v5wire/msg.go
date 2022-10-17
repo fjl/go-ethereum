@@ -267,7 +267,7 @@ func (p *Regtopic) RequestID() []byte      { return p.ReqID }
 func (p *Regtopic) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Regtopic) AppendLogInfo(ctx []interface{}) []interface{} {
-	ctx = append(ctx, "topic", (*enode.ID)(&p.Topic), "req", hexutil.Bytes(p.ReqID))
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID), "topic", (*enode.ID)(&p.Topic))
 	if p.OpID != 0 {
 		ctx = append(ctx, "opid", p.OpID)
 	}
@@ -299,7 +299,7 @@ func (p *TopicQuery) RequestID() []byte      { return p.ReqID }
 func (p *TopicQuery) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *TopicQuery) AppendLogInfo(ctx []interface{}) []interface{} {
-	ctx = append(ctx, "topic", (*enode.ID)(&p.Topic), "req", hexutil.Bytes(p.ReqID))
+	ctx = append(ctx, "req", hexutil.Bytes(p.ReqID), "topic", (*enode.ID)(&p.Topic))
 	if p.OpID != 0 {
 		ctx = append(ctx, "opid", p.OpID)
 	}
