@@ -6,5 +6,7 @@
     "adLifetimeSeconds": 60,
     "regBucketSize": 10,
     "regBucketStandbySize": 20,
-    "searchBucketSize": 3
+    "searchBucketSize": 3,
+
+    "rpcSearchTimeoutSeconds": 120
 }
