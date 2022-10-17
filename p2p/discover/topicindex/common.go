@@ -55,11 +55,11 @@ func (cfg Config) withDefaults() Config {
 		cfg.AdCacheSize = 5000
 	}
 	if cfg.RegAttemptTimeout == 0 {
-		// Note: RegAttemptTimeout == RegLifetime is the most correct choice, since, when
-		// RegLifetime has passed, all ads will have cycled in the remote table. If
-		// registration still hasn't worked after this time, the registrar is overloaded or
-		// malfunctioning and it's better to pick another one.
-		cfg.RegAttemptTimeout = cfg.AdLifetime
+		// Note: RegAttemptTimeout == AdLifetime is a good choice because, when AdLifetime
+		// has passed, all ads will have cycled in the remote table. If registration still
+		// hasn't worked after this time, the registrar is overloaded or malfunctioning
+		// and it's better to pick another one.
+		cfg.RegAttemptTimeout = cfg.AdLifetime + cfg.AdLifetime/2
 	}
 	if cfg.RegBucketSize == 0 {
 		cfg.RegBucketSize = 10

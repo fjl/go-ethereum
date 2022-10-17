@@ -286,7 +286,7 @@ func (r *Registration) HandleTicketResponse(att *RegAttempt, ticket []byte, wait
 	// Drop the attempt when the registrar makes us wait for longer than AdLifetime. This
 	// works because the entire ad cache will have been rotated after one lifetime, and so
 	// the registrar must be misbehaving if they didn't accept
-	if att.reqCount > 1 && att.totalWaitTime > r.cfg.AdLifetime {
+	if att.reqCount > 1 && att.totalWaitTime > r.cfg.RegAttemptTimeout {
 		r.removeAttempt(att, "wtime-too-high")
 		return
 	}
