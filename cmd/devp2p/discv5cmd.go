@@ -220,7 +220,7 @@ type discv5NodeConfig struct {
 	SearchBucketSize     int `json:"searchBucketSize"`
 
 	// RPC config:
-	SearchTimeoutSeconds int `json:"searchTimeoutSeconds"`
+	SearchTimeoutSeconds int `json:"rpcSearchTimeoutSeconds"`
 }
 
 func loadConfig(file string) (*discv5NodeConfig, error) {
