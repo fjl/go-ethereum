@@ -186,7 +186,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 	}
 
 	// Initialize main node table.
-	tab, err := newTable(t, t.db, cfg.Bootnodes, cfg.Log)
+	tab, err := newTable(t, t.db, cfg)
 	if err != nil {
 		return nil, err
 	}

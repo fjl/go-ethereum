@@ -105,7 +105,7 @@ func startLocalhostV5(t *testing.T, cfg Config) *UDPv5 {
 // This test checks that incoming PING calls are handled correctly.
 func TestUDPv5_pingHandling(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	test.packetIn(&v5wire.Ping{ReqID: []byte("foo")})
@@ -122,7 +122,7 @@ func TestUDPv5_pingHandling(t *testing.T) {
 // This test checks that incoming 'unknown' packets trigger the handshake.
 func TestUDPv5_unknownPacket(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	nonce := v5wire.Nonce{1, 2, 3}
@@ -158,7 +158,7 @@ func TestUDPv5_unknownPacket(t *testing.T) {
 // This test checks that incoming FINDNODE calls are handled correctly.
 func TestUDPv5_findnodeHandling(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	// Create test nodes and insert them into the table.
@@ -236,7 +236,7 @@ func (test *udpV5Test) expectNodes(wantReqID []byte, wantTotal uint8, wantNodes 
 // This test checks that incoming TOPICQUERY calls are handled correctly.
 func TestUDPv5_topicqueryHandling(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	// Create test nodes and insert them into the table.
@@ -259,7 +259,7 @@ func TestUDPv5_topicqueryHandling(t *testing.T) {
 // This test checks that outgoing PING calls work.
 func TestUDPv5_pingCall(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	remote := test.getNode(test.remotekey, test.remoteaddr).Node()
@@ -305,7 +305,7 @@ func TestUDPv5_pingCall(t *testing.T) {
 // replies are aggregated.
 func TestUDPv5_findnodeCall(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	// Launch the request:
@@ -354,7 +354,7 @@ func TestUDPv5_findnodeCall(t *testing.T) {
 // This test checks that outgoing TOPICQUERY calls work.
 func TestUDPv5_topicqueryCall(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	// Launch the request:
@@ -400,7 +400,7 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 // This test checks that pending calls are re-sent when a handshake happens.
 func TestUDPv5_callResend(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	remote := test.getNode(test.remotekey, test.remoteaddr).Node()
@@ -437,7 +437,7 @@ func TestUDPv5_callResend(t *testing.T) {
 // This test ensures we don't allow multiple rounds of WHOAREYOU for a single call.
 func TestUDPv5_multipleHandshakeRounds(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	remote := test.getNode(test.remotekey, test.remoteaddr).Node()
@@ -463,7 +463,7 @@ func TestUDPv5_multipleHandshakeRounds(t *testing.T) {
 // This test checks that calls with n replies may take up to n * respTimeout.
 func TestUDPv5_callTimeoutReset(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	// Launch the request:
@@ -502,7 +502,7 @@ func TestUDPv5_callTimeoutReset(t *testing.T) {
 // This test checks that TALKREQ calls the registered handler function.
 func TestUDPv5_talkHandling(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	var recvMessage []byte
@@ -552,7 +552,7 @@ func TestUDPv5_talkHandling(t *testing.T) {
 // This test checks that outgoing TALKREQ calls work.
 func TestUDPv5_talkRequest(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	remote := test.getNode(test.remotekey, test.remoteaddr).Node()
@@ -593,7 +593,7 @@ func TestUDPv5_talkRequest(t *testing.T) {
 // This test checks that lookup works.
 func TestUDPv5_lookup(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 
 	// Lookup on empty table returns no nodes.
 	if results := test.udp.Lookup(lookupTestnet.target.id()); len(results) > 0 {
@@ -670,7 +670,7 @@ func TestUDPv5_LocalNode(t *testing.T) {
 
 func TestUDPv5_PingWithIPV4MappedAddress(t *testing.T) {
 	t.Parallel()
-	test := newUDPV5Test(t)
+	test := newUDPV5Test(t, Config{})
 	defer test.close()
 
 	rawIP := net.IPv4(0xFF, 0x12, 0x33, 0xE5)
@@ -765,7 +765,7 @@ func (c *testCodec) decodeFrame(input []byte) (frame testCodecFrame, p v5wire.Pa
 	return frame, p, err
 }
 
-func newUDPV5Test(t *testing.T) *udpV5Test {
+func newUDPV5Test(t *testing.T, cfg Config) *udpV5Test {
 	test := &udpV5Test{
 		t:          t,
 		pipe:       newpipe(),
@@ -775,15 +775,16 @@ func newUDPV5Test(t *testing.T) *udpV5Test {
 		nodesByID:  make(map[enode.ID]*enode.LocalNode),
 		nodesByIP:  make(map[string]*enode.LocalNode),
 	}
+
+	cfg.PrivateKey = test.localkey
+	cfg.Log = testlog.Logger(t, log.LvlTrace)
+	cfg.ValidSchemes = enode.ValidSchemesForTesting
+
 	test.db, _ = enode.OpenDB("")
 	ln := enode.NewLocalNode(test.db, test.localkey)
 	ln.SetStaticIP(net.IP{10, 0, 0, 1})
 	ln.Set(enr.UDP(30303))
-	test.udp, _ = ListenV5(test.pipe, ln, Config{
-		PrivateKey:   test.localkey,
-		Log:          testlog.Logger(t, log.LvlTrace),
-		ValidSchemes: enode.ValidSchemesForTesting,
-	})
+	test.udp, _ = ListenV5(test.pipe, ln, cfg)
 	test.udp.codec = &testCodec{test: test, id: ln.ID()}
 	test.table = test.udp.tab
 	test.nodesByID[ln.ID()] = ln
@@ -840,7 +841,7 @@ func (test *udpV5Test) createNode(ipIndex int) (*ecdsa.PrivateKey, *enode.LocalN
 
 // waitPacketOut waits for the next output packet and handles it using the given 'validate'
 // function. The function must be of type func (X, *net.UDPAddr, v5wire.Nonce) where X is
-// assignable to packetV5.
+// assignable to v5wire.Packet.
 func (test *udpV5Test) waitPacketOut(validate interface{}) (closed bool) {
 	test.t.Helper()
 

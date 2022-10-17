@@ -19,6 +19,7 @@ package discover
 import (
 	"crypto/ecdsa"
 	"net"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
@@ -41,22 +42,35 @@ type Config struct {
 	// These settings are required and configure the UDP listener:
 	PrivateKey *ecdsa.PrivateKey
 
-	// These settings are optional:
+	// Node table configuration:
+	Bootnodes       []*enode.Node // list of bootstrap nodes
+	PingInterval    time.Duration // speed of node liveness check
+	RefreshInterval time.Duration // used in bucket refresh
+
+	// Topic system configuration:
+	Topic topicindex.Config
+
+	// Misc. optional settings:
 	NetRestrict  *netutil.Netlist   // list of allowed IP networks
-	Bootnodes    []*enode.Node      // list of bootstrap nodes
 	Unhandled    chan<- ReadPacket  // unhandled packets are sent on this channel
-	ValidSchemes enr.IdentityScheme // allowed identity schemes
-	Topic        topicindex.Config  // configuration of topic index
+	ValidSchemes enr.IdentityScheme // allowed ENR identity schemes
 	Log          log.Logger         // if set, log messages go here
 	Clock        mclock.Clock       // timer clock, for testing
 }
 
 func (cfg Config) withDefaults() Config {
-	if cfg.Log == nil {
-		cfg.Log = log.Root()
+	if cfg.PingInterval == 0 {
+		cfg.PingInterval = 10 * time.Second
 	}
+	if cfg.RefreshInterval == 0 {
+		cfg.RefreshInterval = 30 * time.Minute
+	}
+
 	if cfg.ValidSchemes == nil {
 		cfg.ValidSchemes = enode.ValidSchemes
+	}
+	if cfg.Log == nil {
+		cfg.Log = log.Root()
 	}
 	if cfg.Clock == nil {
 		cfg.Clock = mclock.System{}

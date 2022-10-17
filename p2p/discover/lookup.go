@@ -156,7 +156,7 @@ func (it *lookup) query(n *node, reply chan<- []*node) {
 			dropped = true
 			it.tab.delete(n)
 		}
-		it.tab.log.Trace("FINDNODE failed", "id", n.ID(), "failcount", fails, "dropped", dropped, "err", err)
+		it.tab.cfg.Log.Trace("FINDNODE failed", "id", n.ID(), "failcount", fails, "dropped", dropped, "err", err)
 	} else if fails > 0 {
 		// Reset failure counter because it counts _consecutive_ failures.
 		it.tab.db.UpdateFindFails(n.ID(), n.IP(), 0)

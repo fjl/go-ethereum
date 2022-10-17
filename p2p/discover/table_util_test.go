@@ -26,8 +26,10 @@ import (
 	"net"
 	"sort"
 	"sync"
+	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
@@ -41,9 +43,10 @@ func init() {
 	nullNode = enode.SignNull(&r, enode.ID{})
 }
 
-func newTestTable(t transport) (*Table, *enode.DB) {
+func newTestTable(t *testing.T, tr transport) (*Table, *enode.DB) {
+	cfg := Config{Log: testlog.Logger(t, log.LvlTrace)}
 	db, _ := enode.OpenDB("")
-	tab, _ := newTable(t, db, nil, log.Root())
+	tab, _ := newTable(tr, db, cfg)
 	go tab.loop()
 	return tab, db
 }
