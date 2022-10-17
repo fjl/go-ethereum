@@ -137,16 +137,29 @@ func (reg *topicReg) stop() {
 func (reg *topicReg) run(sys *topicSystem) {
 	defer reg.wg.Done()
 
-	for {
+	const regloopMinTime = 2 * time.Second
+
+	for time := mclock.AbsTime(-1); ; time = reg.clock.Now() {
+		// Spin control. This prevents the registration loop from running
+		// too hot when the node table is very empty.
+		d := reg.clock.Now().Sub(time)
+		if d >= 0 && d < regloopMinTime {
+			sleep := reg.clock.NewTimer(regloopMinTime - d)
+			select {
+			case <-sleep.C():
+			case <-reg.quit:
+				return
+			}
+		}
+
 		// Initialize the registration state.
 		nodes := sys.transport.tab.Nodes()
 		if len(nodes) == 0 {
-			// Local table is empty, retry later.
-			time.Sleep(1 * time.Second)
-			continue
+			continue // Local table is empty, retry later.
 		}
 		reg.state.AddNodes(nil, nodes)
 
+		// Perform registration.
 		if exit := reg.runRegistration(sys); exit {
 			return
 		}
