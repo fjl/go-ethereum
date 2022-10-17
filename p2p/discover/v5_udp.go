@@ -497,7 +497,7 @@ func (t *UDPv5) regtopic(n *enode.Node, topic topicindex.TopicID, ticket []byte,
 			}
 		case err := <-c.err:
 			result.err = err
-			break
+			return result
 		}
 	}
 	return result

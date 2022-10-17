@@ -100,11 +100,6 @@ type topicReg struct {
 	wg   sync.WaitGroup
 	quit chan struct{}
 
-	lookupCtx     context.Context
-	lookupCancel  context.CancelFunc
-	lookupTarget  chan enode.ID
-	lookupResults chan []*enode.Node
-
 	regRequest  chan *topicindex.RegAttempt
 	regResponse chan topicRegResult
 
@@ -114,18 +109,13 @@ type topicReg struct {
 }
 
 func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topicReg {
-	ctx, cancel := context.WithCancel(context.Background())
 	reg := &topicReg{
-		state:         topicindex.NewRegistration(topic, sys.config),
-		clock:         sys.config.Clock,
-		opid:          opid,
-		quit:          make(chan struct{}),
-		lookupCtx:     ctx,
-		lookupCancel:  cancel,
-		lookupTarget:  make(chan enode.ID),
-		lookupResults: make(chan []*enode.Node, 1),
-		regRequest:    make(chan *topicindex.RegAttempt),
-		regResponse:   make(chan topicRegResult),
+		state:       topicindex.NewRegistration(topic, sys.config),
+		clock:       sys.config.Clock,
+		opid:        opid,
+		quit:        make(chan struct{}),
+		regRequest:  make(chan *topicindex.RegAttempt),
+		regResponse: make(chan topicRegResult),
 	}
 
 	// Set up the subscription for new main table nodes.
@@ -144,15 +134,18 @@ func (reg *topicReg) stop() {
 }
 
 func (reg *topicReg) run(sys *topicSystem) {
-	defer reg.newNodesSub.Unsubscribe()
 	defer reg.wg.Done()
+	defer reg.newNodesSub.Unsubscribe()
+	defer close(reg.regRequest)
 
-	for time := mclock.AbsTime(-1); ; time = reg.clock.Now() {
+	time := mclock.AbsTime(-1)
+	for {
 		if time >= 0 {
 			if exit := reg.pause(time); exit {
 				return
 			}
 		}
+		time = reg.clock.Now()
 
 		// Initialize the registration state.
 		nodes := sys.transport.tab.Nodes()
@@ -217,9 +210,6 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 		select {
 		// Loop exit.
 		case <-reg.quit:
-			close(reg.regRequest)
-			close(reg.lookupTarget)
-			reg.lookupCancel()
 			return true
 
 		case n := <-reg.newNodesCh:
