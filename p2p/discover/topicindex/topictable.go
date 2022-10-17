@@ -36,6 +36,9 @@ const (
 	baseMultiplier   = 30
 )
 
+// If a node has less than this time to wait, they will be accepted anyway.
+const topicTableWaitTimeFloor = 50 * time.Millisecond
+
 // TopicTable holds node registrations.
 type TopicTable struct {
 	all *list.List
@@ -207,7 +210,10 @@ func (tab *TopicTable) Register(n *enode.Node, t TopicID, waitTime time.Duration
 	// Check if the node has waited enough.
 	requiredTime := tab.WaitTime(n, t)
 	if waitTime < requiredTime {
-		return requiredTime - waitTime
+		remaining := requiredTime - waitTime
+		if remaining > topicTableWaitTimeFloor {
+			return remaining
+		}
 	}
 
 	// Check if there is space. If not, the node needs to come back when a slot opens.
