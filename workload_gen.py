@@ -77,9 +77,7 @@ def send_register(node, topic, config, op_id):
     LOGS.put(payload)
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     print(payload)
-    port = config['rpcBasePort'] + node
-    url = def_url_prefix + ":" + str(port)
-    resp = requests.post(url, json=payload).json()
+    resp = requests.post(node_api_url(node, config), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     LOGS.put(resp)
@@ -190,6 +188,39 @@ class TruncatedZipfDist(DiscreteDist):
         return self._alpha
 
 
+# waits for all nodes to have a sufficient number of neighbors in the routing table
+def wait_for_nodes_ready(config):
+    min_neighbors = min(config['nodes']-1, 10)
+    nodes = list(range(1, config['nodes'] + 1))
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        while len(nodes) > 0:
+            print('waiting for {} nodes to become ready'.format(len(nodes)))
+            # submit check requests
+            proc = []
+            for node in nodes:
+                p = executor.submit(node_neighbor_count, node, config)
+                proc.append((node, p))
+            # check results
+            for (node, p) in proc:
+                try:
+                    count = p.result()
+                except requests.RequestException as e:
+                    print('node {} is not up yet'.format(node))
+                else:
+                    if count >= min_neighbors:
+                        nodes.remove(node)
+            # wait for a bit before retrying
+            time.sleep(1)
+
+
+# checks if the routing table of a node is sufficiently filled
+def node_neighbor_count(node, config):
+    payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
+    resp = requests.post(node_api_url(node, config), json=payload).json()
+    return len(resp['result'])
+
+
 # perform topic registrations
 def register_topics(zipf, config):
     node_topic = {}
@@ -217,6 +248,7 @@ def register_topics(zipf, config):
 
     return node_topic
 
+
 def search_topics(zipf, config, node_to_topic):
     nodes = list(range(1, config['nodes'] + 1))
     node = random.choice(nodes)
@@ -229,7 +261,6 @@ def search_topics(zipf, config, node_to_topic):
 
 
 def send_lookup(node, topic, config, op_id):
-
     global LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
@@ -242,14 +273,20 @@ def send_lookup(node, topic, config, op_id):
     payload["time"] = get_current_time_msec()
     LOGS.put(payload)
     print(payload)
-    port = config['rpcBasePort'] + node
-    url = def_url_prefix + ":" + str(port)
+
     print('Node:', node, 'is searching for topic:', topic)
-    resp = requests.post(url, json=payload).json()
+    resp = requests.post(node_api_url(node, config), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     print('Lookup response: ', resp)
     LOGS.put(resp)
+
+
+def node_api_url(node, config):
+    port = config['rpcBasePort'] + node
+    url = def_url_prefix + ":" + str(port)
+    return url
+
 
 def read_config(dir):
     file = os.path.join(dir, 'experiment.json')
@@ -261,12 +298,15 @@ def read_config(dir):
     assert isinstance(config.get('rpcBasePort'), int)
     return config
 
+
 def main():
     # Read experiment parameters.
     directory = "discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
     config = read_config(directory)
+
+    wait_for_nodes_ready(config)
 
     # register
     zipf = TruncatedZipfDist(zipf_exponent, num_topics)
@@ -285,6 +325,7 @@ def main():
             print('Unable to get the result')
 
     write_logs_to_file(os.path.join(directory, "logs", "logs.json"))
+
 
 if __name__ == "__main__":
     main()
