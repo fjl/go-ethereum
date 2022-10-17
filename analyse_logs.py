@@ -17,7 +17,7 @@ def get_msg_df(log_path, op_df):
         op_type = op_df.loc[op_df['opid'] == opid, 'method'].values[0]
         topic = op_df.loc[op_df['opid'] == opid, 'topic'].values[0]
         op_info[opid] = {'op_type':op_type, 'topic':topic}
-        
+
     rows = []
     for log_file in os.listdir(log_path):
         if (not log_file.startswith("node-")):
@@ -46,7 +46,7 @@ def get_msg_df(log_path, op_df):
                 #it's not a message sent between peers
                 continue
             row['timestamp'] = parse(jsons['t'])
-            row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
+            row['msg_type'] = jsons['msg'].split(' ')[1]
             if('req' in jsons):
                 row['req_id'] = jsons['req']
             #print(row)
@@ -57,17 +57,18 @@ def get_msg_df(log_path, op_df):
                 row['total_wtime'] = jsons['total-wtime']
             if("ok" in jsons):
                 row['ok'] = jsons['ok']
-            
+
             #we have a key to the message specified
             #currently it can only be the topic
-            if(':' in jsons['msg'].split(' ')[1]):
+            if("topic" in jsons):
                 #replace topic digest by topic name
-                row['key'] = topic_mapping[jsons['msg'].split(' ')[1].split(':')[1]]
+                topic = jsons['topic']
+                row['key'] = topic_mapping[topic]
             #print(row)
             rows.append(row)
 
 
-    msg_df = pd.DataFrame(rows) 
+    msg_df = pd.DataFrame(rows)
     #keep only the send messages (as they have the opid)
     msg_df = msg_df[msg_df['in_out'] == 'out']
 
@@ -75,7 +76,7 @@ def get_msg_df(log_path, op_df):
     def process(row):
         op_id = row['opid']
         req_id = row['req_id']
-    
+
         if(not numpy.isnan(op_id)):
             mapping[req_id] = op_id
 
@@ -89,12 +90,12 @@ def get_msg_df(log_path, op_df):
             row['topic'] = numpy.NaN
             row['op_type'] = numpy.NaN
         return row
-     
+
     msg_df = msg_df.apply(lambda row : process(row), axis = 1)
     msg_df['opid'] = msg_df['tmp']
     msg_df.drop('tmp', axis=1, inplace=True)
     msg_df = msg_df.dropna(subset=['opid'])
-    
+
     return msg_df
 
 def get_op_df(log_path):
@@ -121,7 +122,7 @@ def get_op_df(log_path):
             row['opid'] = opid
             row['method'] = jsons['method']
             row['reply_received'] = False
-            
+
             jsons['params'][0] = int(topic_mapping[jsons['params'][0][2:]])#drop the 0x at the begining
             row['params'] = jsons['params']
             row['start_time'] = jsons['time']
@@ -152,12 +153,12 @@ def get_op_df(log_path):
 
     return op_df
 
-    
 
 
 
-            
-    
+
+
+
 #op_df = get_op_df('./discv5-test/logs')
 #print("op_df")
 #print(op_df)
@@ -172,6 +173,3 @@ def get_op_df(log_path):
 
 #print(df['msg_type'].value_counts())
 #print(df['in_out'].value_counts())
-
-        
-        
