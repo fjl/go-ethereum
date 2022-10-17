@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
@@ -825,6 +826,16 @@ func (test *udpV5Test) getNode(key *ecdsa.PrivateKey, addr *net.UDPAddr) *enode.
 	}
 	test.nodesByIP[string(addr.IP)] = ln
 	return ln
+}
+
+// createNode generates a new test node. The IP address is assigned based on the given index.
+func (test *udpV5Test) createNode(ipIndex int) (*ecdsa.PrivateKey, *enode.LocalNode) {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		panic(err)
+	}
+	ln := test.getNode(key, &net.UDPAddr{IP: intIP(ipIndex), Port: 30303})
+	return key, ln
 }
 
 // waitPacketOut waits for the next output packet and handles it using the given 'validate'
