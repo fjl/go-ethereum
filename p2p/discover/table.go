@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -79,6 +80,7 @@ type Table struct {
 	closeReq   chan struct{}
 	closed     chan struct{}
 
+	nodeFeed      event.Feed
 	nodeAddedHook func(*node) // for testing
 }
 
@@ -154,6 +156,11 @@ func (tab *Table) Nodes() []*enode.Node {
 		}
 	}
 	return nodes
+}
+
+// subscribeNodes adds a listener receiving all newly-added nodes.
+func (tab *Table) subscribeNodes(ch chan *enode.Node) event.Subscription {
+	return tab.nodeFeed.Subscribe(ch)
 }
 
 // ReadRandomNodes fills the given slice with random nodes from the table. The results
@@ -361,6 +368,12 @@ func (tab *Table) doRevalidate(done chan<- struct{}) {
 		last.livenessChecks++
 		tab.log.Debug("Revalidated node", "b", bi, "id", last.ID(), "checks", last.livenessChecks)
 		tab.bumpInBucket(b, last)
+
+		// Dispatch to subscribers if this is a new node.
+		if last.livenessChecks == 1 {
+			tab.nodeFeed.Send(&last.Node)
+		}
+
 		return
 	}
 	// No reply received, pick a replacement or delete the node if there aren't
@@ -499,10 +512,12 @@ func (tab *Table) addSeenNode(n *node) {
 		// Can't add: IP limit reached.
 		return
 	}
+
 	// Add to end of bucket:
 	b.entries = append(b.entries, n)
 	b.replacements = deleteNode(b.replacements, n)
 	n.addedAt = time.Now()
+
 	if tab.nodeAddedHook != nil {
 		tab.nodeAddedHook(n)
 	}
@@ -541,10 +556,12 @@ func (tab *Table) addVerifiedNode(n *node) {
 		// Can't add: IP limit reached.
 		return
 	}
+
 	// Add to front of bucket.
 	b.entries, _ = pushNode(b.entries, n, bucketSize)
 	b.replacements = deleteNode(b.replacements, n)
 	n.addedAt = time.Now()
+
 	if tab.nodeAddedHook != nil {
 		tab.nodeAddedHook(n)
 	}

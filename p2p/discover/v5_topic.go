@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -106,6 +107,10 @@ type topicReg struct {
 
 	regRequest  chan *topicindex.RegAttempt
 	regResponse chan topicRegResult
+
+	// nodes subscription
+	newNodesCh  chan *enode.Node
+	newNodesSub event.Subscription
 }
 
 func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topicReg {
@@ -123,6 +128,10 @@ func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topic
 		regResponse:   make(chan topicRegResult),
 	}
 
+	// Set up the subscription for new main table nodes.
+	reg.newNodesCh = make(chan *enode.Node, 100)
+	reg.newNodesSub = sys.transport.tab.subscribeNodes(reg.newNodesCh)
+
 	reg.wg.Add(2)
 	go reg.run(sys)
 	go reg.runRequests(sys)
@@ -135,19 +144,12 @@ func (reg *topicReg) stop() {
 }
 
 func (reg *topicReg) run(sys *topicSystem) {
+	defer reg.newNodesSub.Unsubscribe()
 	defer reg.wg.Done()
 
-	const regloopMinTime = 2 * time.Second
-
 	for time := mclock.AbsTime(-1); ; time = reg.clock.Now() {
-		// Spin control. This prevents the registration loop from running
-		// too hot when the node table is very empty.
-		d := reg.clock.Now().Sub(time)
-		if d >= 0 && d < regloopMinTime {
-			sleep := reg.clock.NewTimer(regloopMinTime - d)
-			select {
-			case <-sleep.C():
-			case <-reg.quit:
+		if time >= 0 {
+			if exit := reg.pause(time); exit {
 				return
 			}
 		}
@@ -164,6 +166,29 @@ func (reg *topicReg) run(sys *topicSystem) {
 			return
 		}
 	}
+}
+
+const regloopMinTime = 2 * time.Second
+
+// pause ensures that top-level registration loop iterations take at least regLoopMinTime.
+// This prevents the loop from running too hot when the local node table is very empty.
+func (reg *topicReg) pause(lastTime mclock.AbsTime) bool {
+	d := reg.clock.Now().Sub(lastTime)
+	if d < regloopMinTime {
+		sleep := reg.clock.NewTimer(regloopMinTime - d)
+		defer sleep.Stop()
+		for {
+			select {
+			case <-sleep.C():
+				return false
+			case <-reg.newNodesCh:
+				// Need to read this channel to avoid blocking in Table.
+			case <-reg.quit:
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
@@ -196,6 +221,9 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 			close(reg.lookupTarget)
 			reg.lookupCancel()
 			return true
+
+		case n := <-reg.newNodesCh:
+			reg.state.AddNodes(nil, []*enode.Node{n})
 
 		// Attempt queue updates.
 		case <-updateCh:
