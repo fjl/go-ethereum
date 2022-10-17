@@ -132,9 +132,12 @@ type (
 
 	// REGCONFIRMATION is the reply to REGTOPIC.
 	Regconfirmation struct {
-		ReqID    []byte
-		Ticket   []byte // registered successfully if length zero
-		WaitTime uint
+		ReqID      []byte
+		NodesCount uint   // number of additional NODES responses
+		Ticket     []byte // registered successfully if length zero
+		WaitTime   uint   // how to wait until sending next REGTOPIC (in ms)
+		// Note: when len(Ticket) == 0, registration is successful and
+		// WaitTime is the registration lifetime.
 
 		CumulativeWaitTime *uint `rlp:"-"` // for logs
 	}

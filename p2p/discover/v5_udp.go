@@ -479,6 +479,9 @@ func (t *UDPv5) regtopic(n *enode.Node, topic topicindex.TopicID, ticket []byte,
 		case responseP := <-c.ch:
 			switch response := responseP.(type) {
 			case *v5wire.Regconfirmation:
+				if total == -1 {
+					total = min(int(response.NodesCount), totalNodesResponseLimit)
+				}
 				result.msg = response
 				confirmed = true
 			case *v5wire.Nodes:
@@ -1050,10 +1053,22 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		waitTime = now.Sub(ticket.FirstIssued)
 	}
 
+	// Collect closest nodes to topic hash.
+	nodes := t.tab.findnodeByID(enode.ID(ticket.Topic), 16, true)
+	var nodesResponses []*v5wire.Nodes
+	if len(nodes.entries) > 0 {
+		nodesResponses = packNodes(p.ReqID, unwrapNodes(nodes.entries))
+	}
+
 	// Attempt to register.
 	newTime := t.topicTable.Register(n, ticket.Topic, waitTime)
 
-	confirmation := &v5wire.Regconfirmation{ReqID: p.ReqID}
+	// Send the confirmation.
+	confirmation := &v5wire.Regconfirmation{
+		ReqID:      p.ReqID,
+		NodesCount: uint(len(nodesResponses)),
+	}
+
 	if newTime > 0 {
 		firstIssued := ticket.FirstIssued
 		if len(p.Ticket) == 0 {
@@ -1076,11 +1091,9 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 
 		confirmation.WaitTime = waitTimeToMs(t.topicTable.AdLifetime())
 	}
-	t.sendResponse(fromID, fromAddr, confirmation)
 
-	// Collect closest nodes to topic hash.
-	nodes := t.tab.findnodeByID(enode.ID(ticket.Topic), 16, true)
-	for _, msg := range packNodes(p.ReqID, unwrapNodes(nodes.entries)) {
+	t.sendResponse(fromID, fromAddr, confirmation)
+	for _, msg := range nodesResponses {
 		t.sendResponse(fromID, fromAddr, msg)
 	}
 }
