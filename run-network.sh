@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-N_NODES=10
+N_NODES=100
 DIR=discv5-test
 CONFIG_FILE=./discv5-stdconfig.json
 JSONLOGS=1
@@ -49,7 +49,7 @@ start_nodes() {
         let "rpc = 20200 + $i"
         keyfile="$DIR/keys/node-$i.key"
         logfile="$DIR/logs/node-$i.log"
-        rm -f "$logfile"
+        rm -f $logfile || true
 
         logflags="--verbosity 5"
         if [[ "$JSONLOGS" = "1" ]]; then
@@ -91,7 +91,7 @@ make_keys
 
 # Initialize logs directory.
 mkdir -p "$DIR/logs"
-rm $DIR/logs/*
+rm $DIR/logs/* || true
 write_experiment
 
 # Cleanup at exit.
