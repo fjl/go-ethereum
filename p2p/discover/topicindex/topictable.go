@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
 // wait time computation constants.
@@ -253,10 +254,10 @@ func (wt *waitTimeState) ipModifier(n *enode.Node) float64 {
 		score4 float64
 		score6 float64
 	)
-	if n.Load(&ip4) == nil {
+	if n.Load(&ip4) == nil && !netutil.IsLAN(net.IP(ip4)) {
 		score4 = wt.ipv4.score(net.IP(ip4))
 	}
-	if n.Load(&ip6) == nil {
+	if n.Load(&ip6) == nil && !netutil.IsLAN(net.IP(ip6)) {
 		score6 = wt.ipv6.score(net.IP(ip6))
 	}
 	return math.Max(score4, score6)
