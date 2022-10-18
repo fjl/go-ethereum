@@ -52,6 +52,7 @@ const (
 	RegtopicMsg
 	RegconfirmationMsg
 	TopicQueryMsg
+	TopicNodesMsg
 
 	UnknownPacket   = byte(255) // any non-decryptable packet
 	WhoareyouPacket = byte(254) // the WHOAREYOU packet
@@ -137,7 +138,7 @@ type (
 	// REGCONFIRMATION is the reply to REGTOPIC.
 	Regconfirmation struct {
 		ReqID      []byte
-		NodesCount uint   // number of additional NODES responses
+		NodesCount uint8  // number of additional NODES responses
 		Ticket     []byte // registered successfully if length zero
 		WaitTime   uint   // how to wait until sending next REGTOPIC (in ms)
 		// Note: when len(Ticket) == 0, registration is successful and
@@ -154,6 +155,13 @@ type (
 		// OpID is for debugging purposes and is not part of the packet encoding.
 		// It identifies the 'operation' on behalf of which the request was sent.
 		OpID uint64 `rlp:"-"`
+	}
+
+	// TOPICNODES is one of the responses to TOPICQUERY.
+	TopicNodes struct {
+		ReqID []byte
+		Total uint8
+		Nodes []*enr.Record
 	}
 )
 
@@ -179,6 +187,8 @@ func DecodeMessage(ptype byte, body []byte) (Packet, error) {
 		dec = new(Regconfirmation)
 	case TopicQueryMsg:
 		dec = new(TopicQuery)
+	case TopicNodesMsg:
+		dec = new(TopicNodes)
 	default:
 		return nil, fmt.Errorf("unknown packet type %d", ptype)
 	}
@@ -246,7 +256,11 @@ func (p *Nodes) RequestID() []byte      { return p.ReqID }
 func (p *Nodes) SetRequestID(id []byte) { p.ReqID = id }
 
 func (p *Nodes) AppendLogInfo(ctx []interface{}) []interface{} {
-	return append(ctx, "req", hexutil.Bytes(p.ReqID), "tot", p.Total, "n", len(p.Nodes))
+	return append(ctx,
+		"req", hexutil.Bytes(p.ReqID),
+		"tot", p.Total,
+		"n", len(p.Nodes),
+	)
 }
 
 func (*TalkRequest) Name() string             { return "TALKREQ/v5" }
@@ -310,4 +324,17 @@ func (p *TopicQuery) AppendLogInfo(ctx []interface{}) []interface{} {
 		ctx = append(ctx, "opid", p.OpID)
 	}
 	return ctx
+}
+
+func (*TopicNodes) Name() string             { return "TOPICNODES/v5" }
+func (*TopicNodes) Kind() byte               { return TopicNodesMsg }
+func (p *TopicNodes) RequestID() []byte      { return p.ReqID }
+func (p *TopicNodes) SetRequestID(id []byte) { p.ReqID = id }
+
+func (p *TopicNodes) AppendLogInfo(ctx []interface{}) []interface{} {
+	return append(ctx,
+		"req", hexutil.Bytes(p.ReqID),
+		"tot", p.Total,
+		"n", len(p.Nodes),
+	)
 }
