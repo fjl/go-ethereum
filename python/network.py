@@ -21,7 +21,7 @@ def make_keys(config_path,n):
     print("building keys...")
     result = os.makedirs(config_path+"keys/",exist_ok=True)
 
-    for i in range(n):
+    for i in range(1,n+1):
         file=config_path+"keys/node-"+str(i)+".key"
         if not os.path.exists(file):
             result = os.system("./devp2p key generate "+file)
@@ -57,9 +57,11 @@ def start_nodes(config_path,params,json):
     udpBasePort = params['udpBasePort']
     rpcBasePort = params['rpcBasePort']
 
-    for i in range(n):
+    for i in range(1,n+1):
+        #print("starting node "+str(i))
         port=udpBasePort+i
         rpc=rpcBasePort+i
+
         keyfile=config_path+"keys/node-"+str(i)+".key"
         logfile=config_path+"logs/node-"+str(i)+".log"
         logflags="--verbosity 5"
@@ -67,8 +69,9 @@ def start_nodes(config_path,params,json):
             logflags+=" --log.json"
 
         nodekey=open(keyfile,"r").read()
-        nodeflags="--bootnodes "+bootnode+" --nodekey "+nodekey+" --addr 127.0.0.1:"+str(port)+" --rpc 127.0.0.1:"+str(rpc) 
+        #print("port:"+str(port)+" rpc:"+str(rpc))
 
+        nodeflags="--bootnodes "+bootnode+" --nodekey "+nodekey+" --addr 127.0.0.1:"+str(port)+" --rpc 127.0.0.1:"+str(rpc) 
         nodeflags+=" --config "+config_path+"config.json"
 
         #os.system("./devp2p $logflags discv5 listen $nodeflags 2>"+logfile+" >"+logfile+" &")
