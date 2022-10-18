@@ -23,12 +23,12 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
-func TestSearchLookups(t *testing.T) {
-	config := testConfig(t)
-	s := NewSearch(topic1, config)
-
-	t.Log(s.LookupTarget())
-}
+// func TestSearchLookups(t *testing.T) {
+// 	config := testConfig(t)
+// 	s := NewSearch(topic1, config)
+//
+// 	t.Log(s.LookupTarget())
+// }
 
 // This checks that search buckets are filled correctly
 // with nodes at various distances.
@@ -42,10 +42,10 @@ func TestSearchBuckets(t *testing.T) {
 		close5  = nodesAtDistance(enode.ID(topic1), 5, 1)
 		close20 = nodesAtDistance(enode.ID(topic1), 20, 1)
 	)
-	s.AddLookupNodes(far256)
-	s.AddLookupNodes(far255)
-	s.AddLookupNodes(close5)
-	s.AddLookupNodes(close20)
+	s.AddNodes(nil, far256)
+	s.AddNodes(nil, far255)
+	s.AddNodes(nil, close5)
+	s.AddNodes(nil, close20)
 
 	last := len(s.buckets) - 1
 	if !sbContainsAll(s.buckets[0], far256) {

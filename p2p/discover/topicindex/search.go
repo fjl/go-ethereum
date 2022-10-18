@@ -19,7 +19,6 @@ package topicindex
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -40,15 +39,13 @@ type Search struct {
 	topic TopicID
 	cfg   Config
 
-	numResults int
-
-	lastLookupTime         mclock.AbsTime
-	lookupsWithoutNewNodes int
-
 	// Note: search buckets are ordered far -> close.
 	buckets [searchTableDepth]searchBucket
 
 	resultBuffer []*enode.Node
+	numResults   int
+
+	queriesWithoutNewNodes int
 }
 
 type searchBucket struct {
@@ -97,35 +94,11 @@ func (s *Search) IsDone() bool {
 	}
 	// No unasked nodes remain. Consider it done when the last
 	// two lookups didn't yield any new nodes.
-	return s.lookupsWithoutNewNodes >= 2
+	return s.queriesWithoutNewNodes >= 2
 }
 
-// NextLookupTime returns when the next lookup operation should start.
-func (s *Search) NextLookupTime() mclock.AbsTime {
-	now := s.cfg.Clock.Now()
-	next := s.lastLookupTime.Add(searchLookupMinDelay)
-	if next > now {
-		return next
-	}
-	return now
-}
-
-// LookupTarget returns a suitable target for a DHT lookup.
-//
-// This finds the furthest bucket with no nodes and generates
-// an ID that would fall into the bucket.
-func (s *Search) LookupTarget() enode.ID {
-	center := enode.ID(s.topic)
-	for _, b := range s.buckets {
-		if b.numResults == 0 || b.count() == 0 {
-			return enode.RandomID(center, b.dist)
-		}
-	}
-	return center
-}
-
-// AddLookupNodes adds the results of a lookup to the table.
-func (s *Search) AddLookupNodes(nodes []*enode.Node) {
+// AddNodes adds the results of a lookup to the table.
+func (s *Search) AddNodes(src *enode.Node, nodes []*enode.Node) {
 	var anyNewNode bool
 	for _, n := range nodes {
 		if n.ID() == s.cfg.Self {
@@ -140,11 +113,10 @@ func (s *Search) AddLookupNodes(nodes []*enode.Node) {
 		}
 	}
 
-	s.lastLookupTime = s.cfg.Clock.Now()
 	if !anyNewNode {
-		s.lookupsWithoutNewNodes++
+		s.queriesWithoutNewNodes++
 	} else {
-		s.lookupsWithoutNewNodes = 0
+		s.queriesWithoutNewNodes = 0
 	}
 }
 

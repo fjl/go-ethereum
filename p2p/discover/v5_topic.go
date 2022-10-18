@@ -17,7 +17,6 @@
 package discover
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -34,9 +33,8 @@ type topicSystem struct {
 	transport *UDPv5
 	config    topicindex.Config
 
-	mu     sync.Mutex
-	reg    map[topicindex.TopicID]*topicReg
-	search map[topicindex.TopicID]*topicSearch
+	mu  sync.Mutex
+	reg map[topicindex.TopicID]*topicReg
 }
 
 func newTopicSystem(transport *UDPv5, config topicindex.Config) *topicSystem {
@@ -44,7 +42,6 @@ func newTopicSystem(transport *UDPv5, config topicindex.Config) *topicSystem {
 		transport: transport,
 		config:    config,
 		reg:       make(map[topicindex.TopicID]*topicReg),
-		search:    make(map[topicindex.TopicID]*topicSearch),
 	}
 }
 
@@ -75,10 +72,6 @@ func (sys *topicSystem) stop() {
 	for topic, reg := range sys.reg {
 		reg.stop()
 		delete(sys.reg, topic)
-	}
-	for topic, s := range sys.search {
-		s.stop()
-		delete(sys.search, topic)
 	}
 }
 
@@ -230,22 +223,22 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 			sendAttempt, sendAttemptCh = nil, nil
 
 		case resp := <-reg.regResponse:
+			if len(resp.nodes) > 0 {
+				reg.state.AddNodes(resp.att.Node, resp.nodes)
+			}
 			if resp.err != nil {
 				reg.state.HandleErrorResponse(resp.att, resp.err)
 				continue
 			}
-
 			// TODO: handle overflow
 			wt := time.Duration(resp.msg.WaitTime) * time.Millisecond
-
 			if len(resp.msg.Ticket) > 0 {
 				reg.state.HandleTicketResponse(resp.att, resp.msg.Ticket, wt)
 			} else {
-				// No ticket - registration successful. WaitTime field means ad lifetime.
+				// No ticket - registration successful.
+				// WaitTime field means ad lifetime.
 				reg.state.HandleRegistered(resp.att, wt)
 			}
-
-			reg.state.AddNodes(resp.att.Node, resp.nodes)
 		}
 	}
 }
@@ -289,25 +282,14 @@ type topicSearch struct {
 	quit chan struct{}
 
 	queryCh     chan *enode.Node
-	queryRespCh chan topicQueryResp
+	queryRespCh chan topicQueryResult
+	resultCh    chan *enode.Node
 
-	resultCh chan *enode.Node
-
-	lookupCtx     context.Context
-	lookupCancel  context.CancelFunc
-	lookupCh      chan enode.ID
-	lookupResults chan []*enode.Node
-}
-
-type topicQueryResp struct {
-	src   *enode.Node
-	nodes []*enode.Node
-	err   error
+	newNodesCh  chan *enode.Node
+	newNodesSub event.Subscription
 }
 
 func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.Node, opid uint64) *topicSearch {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	s := &topicSearch{
 		topic:    topic,
 		config:   sys.config,
@@ -317,17 +299,15 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.
 
 		// query
 		queryCh:     make(chan *enode.Node),
-		queryRespCh: make(chan topicQueryResp),
-
-		// lookup
-		lookupCtx:     ctx,
-		lookupCancel:  cancel,
-		lookupCh:      make(chan enode.ID),
-		lookupResults: make(chan []*enode.Node, 1),
+		queryRespCh: make(chan topicQueryResult),
 	}
-	s.wg.Add(3)
-	go s.run()
-	go s.runLookups(sys)
+
+	// Set up the subscription for new main table nodes.
+	s.newNodesCh = make(chan *enode.Node, 100)
+	s.newNodesSub = sys.transport.tab.subscribeNodes(s.newNodesCh)
+
+	s.wg.Add(2)
+	go s.runLoop(sys)
 	go s.runRequests(sys)
 	return s
 }
@@ -337,34 +317,69 @@ func (s *topicSearch) stop() {
 	s.wg.Wait()
 }
 
-func (s *topicSearch) run() {
+func (s *topicSearch) runLoop(sys *topicSystem) {
 	defer s.wg.Done()
+	defer s.newNodesSub.Unsubscribe()
+	defer s.closeDown()
 
+	time := mclock.AbsTime(-1)
+	for {
+		if time >= 0 {
+			if exit := s.pause(time); exit {
+				return
+			}
+		}
+		time = s.config.Clock.Now()
+
+		state := topicindex.NewSearch(s.topic, s.config)
+		nodes := sys.transport.tab.Nodes()
+		if len(nodes) == 0 {
+			continue // Local table is empty, retry later.
+		}
+		state.AddNodes(nil, nodes)
+
+		if exit := s.run(state); exit {
+			return
+		}
+	}
+
+}
+
+// pause ensures that top-level loop iterations take at least regLoopMinTime.
+// This prevents the loop from running too hot when the local node table is very empty.
+func (s *topicSearch) pause(lastTime mclock.AbsTime) bool {
+	d := s.config.Clock.Now().Sub(lastTime)
+	if d < regloopMinTime {
+		sleep := s.config.Clock.NewTimer(regloopMinTime - d)
+		defer sleep.Stop()
+		for {
+			select {
+			case <-sleep.C():
+				return false
+			case <-s.newNodesCh:
+				// Need to read this channel to avoid blocking in Table.
+			case <-s.quit:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *topicSearch) run(state *topicindex.Search) (exit bool) {
 	var (
-		state        = topicindex.NewSearch(s.topic, s.config)
-		lookupEv     = mclock.NewAlarm(s.config.Clock)
-		lookupCh     chan enode.ID
-		lookupTarget enode.ID
-		queryCh      chan<- *enode.Node
-		queryTarget  *enode.Node
-		resultCh     chan<- *enode.Node
-		result       *enode.Node
-		nresults     int
+		queryCh     chan<- *enode.Node
+		queryTarget *enode.Node
+		resultCh    chan<- *enode.Node
+		result      *enode.Node
+		nresults    int
 	)
 
 	for {
 		// State rollover.
 		if state.IsDone() {
 			s.config.Log.Debug("Topic search rollover", "topic", s.topic, "nres", nresults)
-			state = topicindex.NewSearch(s.topic, s.config)
-			nresults = 0
-		}
-		// Schedule lookups.
-		if lookupCh == nil {
-			next := state.NextLookupTime()
-			if next != topicindex.Never {
-				lookupEv.Schedule(next)
-			}
+			return false
 		}
 		// Ensure there is always one query running.
 		if queryTarget == nil {
@@ -383,33 +398,16 @@ func (s *topicSearch) run() {
 		select {
 		// Loop exit.
 		case <-s.quit:
-			s.lookupCancel()
-			close(s.lookupCh)
-			close(s.queryCh)
-			// Drain result channel. This guarantees that, when the iterator's
-			// Close is done, Next will always return false.
-			close(s.resultCh)
-			for range s.resultCh {
-			}
-			return
-
-		// Lookup management.
-		case <-lookupEv.C():
-			lookupTarget = state.LookupTarget()
-			lookupCh = s.lookupCh
-
-		case lookupCh <- lookupTarget:
-		case nodes := <-s.lookupResults:
-			state.AddLookupNodes(nodes)
-			lookupCh = nil
+			return true
 
 		// Queries.
 		case queryCh <- queryTarget:
 		case resp := <-s.queryRespCh:
+			state.AddNodes(resp.src, resp.auxNodes)
+			state.AddQueryResults(resp.src, resp.topicNodes)
 			if resp.err != nil {
-				s.config.Log.Debug("TOPICQUERY failed", "topic", s.topic, "id", resp.src.ID(), "err", resp.err)
+				s.config.Log.Debug("TOPICQUERY/v5 failed", "topic", s.topic, "id", resp.src.ID(), "err", resp.err)
 			}
-			state.AddQueryResults(resp.src, resp.nodes)
 			queryTarget, queryCh = nil, nil
 
 		// Results.
@@ -421,32 +419,33 @@ func (s *topicSearch) run() {
 	}
 }
 
-// TODO: this should be shared with topicReg somehow.
-func (s *topicSearch) runLookups(sys *topicSystem) {
-	defer s.wg.Done()
-
-	for target := range s.lookupCh {
-		l := sys.transport.newLookup(s.lookupCtx, target, s.opid)
-		// Note: here, only the final results (i.e. closest to target) are taken.
-		nodes := l.run()
-		select {
-		case s.lookupResults <- nodes:
-		case <-s.lookupCtx.Done():
-			return
-		}
+func (s *topicSearch) closeDown() {
+	close(s.queryCh)
+	// Drain result channel. This guarantees that, when the iterator's
+	// Close is done, Next will always return false.
+	close(s.resultCh)
+	for range s.resultCh {
 	}
+}
+
+type topicQueryResult struct {
+	src *enode.Node
+
+	topicNodes []*enode.Node
+	auxNodes   []*enode.Node
+	err        error
 }
 
 func (s *topicSearch) runRequests(sys *topicSystem) {
 	defer s.wg.Done()
 
 	for n := range s.queryCh {
-		resp := topicQueryResp{src: n}
-		resp.nodes, resp.err = sys.transport.topicQuery(n, s.topic, s.opid)
+		result := sys.transport.topicQuery(n, s.topic, s.opid)
+		result.src = n
 
 		// Send response to main loop.
 		select {
-		case s.queryRespCh <- resp:
+		case s.queryRespCh <- result:
 		case <-s.quit:
 			return
 		}
