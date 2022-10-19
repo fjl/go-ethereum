@@ -228,6 +228,9 @@ def register_topics(zipf, config):
     node_topic = {}
     time_now = float(time.time())
     nodes = list(range(1, config['nodes'] + 1))
+   # print("Nodes:"+str(config['nodes'])+" lifetime:"+str(config['adLifetimeSeconds']))
+    request_rate = config['nodes'] / config['adLifetimeSeconds']
+    #print(request_rate)
     time_next = time_now + random.expovariate(request_rate)
 
     # send a registration at exponentially distributed
@@ -255,13 +258,30 @@ def search_topics(zipf, config, node_to_topic):
     nodes = list(range(1, config['nodes'] + 1))
     node = random.choice(nodes)
     nodes = list(range(1, config['nodes'] + 1))
+          
+    time_now = float(time.time())
 
-    global MAX_REQUEST_THREADS
+    request_rate = config['nodes'] / config['adLifetimeSeconds']
+    #print(request_rate)
+    time_next = time_now + random.expovariate(request_rate)
+
+    #global MAX_REQUEST_THREADS
+    #with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
+    #    for node in nodes:
+    #        topic = node_to_topic[node]
+    #        PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
     with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-        for node in nodes:
-            topic = node_to_topic[node]
-            PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
-
+        while (len(nodes) > 0):
+            time_now = float(time.time())
+            if time_next > time_now:
+                time.sleep(time_next - time_now)
+            else:
+                node = random.choice(nodes)
+                nodes.remove(node)
+                topic = node_to_topic[node]
+                #send_register(node, topic, config)
+                PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
+                time_next = time_now + random.expovariate(request_rate)
 
 def send_lookup(node, topic, config, op_id):
     global LOGS

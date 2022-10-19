@@ -25,8 +25,8 @@ def run_workload(out_dir,params):
 
     # wait for registrations to complete
     # search
-    print("Waiting adlifetime...")
-    time.sleep(params['adLifetimeSeconds'])
+    #print("Waiting adlifetime...")
+    #time.sleep(params['adLifetimeSeconds'])
     print("Searching for topics...")
     search_topics(zipf, config, node_to_topic)
     for future in PROCESSES:
