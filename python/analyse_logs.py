@@ -9,7 +9,8 @@ from matplotlib.lines import Line2D
 import seaborn as sns
 import numpy
 
-log_path = "./discv5-test/logs"
+#log_path = "./discv5-test/logs"
+log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
 
 def get_msg_df(log_path, op_df):
     topic_mapping = {} #reverse engineer the topic hash
@@ -251,13 +252,16 @@ def plot_times_discovered(fig_dir,op_df):
     fig.savefig(fig_dir + 'times_discovered.eps',format='eps')
 
 def plot_search_results(fig_dir,op_df):
+
     op_df_exploded = op_df.copy()
+    op_df_exploded = op_df_exploded.explode('result')
     op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
     fig, axes = plt.subplots()
     op_df_droppedNone['opid'].value_counts().plot(ax=axes, kind='bar')
     axes.set_xlabel("Topic search operation")
     axes.set_ylabel("Number of results")
     axes.set_yticks(list(op_df_droppedNone['opid'].value_counts()))
+
     fig.savefig(fig_dir + 'discovered_search.eps',format='eps')
 
 def plot_waiting_time(fig_dir,msg_df):
