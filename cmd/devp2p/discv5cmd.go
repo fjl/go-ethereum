@@ -301,8 +301,9 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) [
 	}()
 
 	wg.Wait()
-	ids := make([]enode.ID, len(nodes))
-	for i, n := range <-nodes {
+	results := <-nodes
+	ids := make([]enode.ID, len(results))
+	for i, n := range results {
 		ids[i] = n.ID()
 	}
 	return ids
