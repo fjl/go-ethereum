@@ -223,7 +223,6 @@ def node_neighbor_count(node, config):
     #print("Result:"+str(node)+" "+str(resp['result']))
     return len(resp['result'])
 
-
 # perform topic registrations
 def register_topics(zipf, config):
     node_topic = {}

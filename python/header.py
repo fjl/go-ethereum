@@ -1,4 +1,4 @@
-features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 50, 'vals':[50]},
+features =  {'nodes': {'type': 'benign', 'default': 100,'defaultAttack': 100, 'vals':[100]},
              'topic': {'type': 'benign', 'default': 1, 'defaultAttack': 1,'vals':[1]},
              'regBucketSize': {'type': 'benign', 'default': 10, 'defaultAttack': 10, 'vals':[10]},
              'searchBucketSize': {'type': 'benign', 'default': 3, 'defaultAttack': 3, 'vals':[3]},
@@ -6,7 +6,7 @@ features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 50, 'val
              'adCacheSize': {'type': 'benign', 'default': 500, 'defaultAttack': 500, 'vals':[500]},
              'rpcBasePort': {'type': 'benign', 'default': 20200, 'defaultAttack': 20200, 'vals':[20200]},
              'udpBasePort': {'type': 'benign', 'default': 30200, 'defaultAttack': 30200, 'vals':[30200]},
-             'returnedNodes': {'type': 'benign', 'default': 1, 'defaultAttack': 1, 'vals':[1]},
+             'returnedNodes': {'type': 'benign', 'default': 10, 'defaultAttack': 10, 'vals':[10]},
 }
 
 

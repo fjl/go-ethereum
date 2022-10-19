@@ -94,6 +94,6 @@ def run_testbed(config_path,params):
     make_keys(config_path,params['nodes'])
     write_experiment(config_path,params)
     start_nodes(config_path,params,True)
-
+    time.sleep(10)
 def stop_testbed(params):
     stop_nodes(params['nodes'])

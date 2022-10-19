@@ -4,6 +4,8 @@ import os
 from python.header import *
 from python.network import *
 from python.workload_gen import *
+from python.analyse_logs import *
+
 
 #turn a running config into a folder name
 def params_to_dir(params, type):
@@ -24,7 +26,6 @@ def run_workload(out_dir,params):
     # wait for registrations to complete
     print("Searching for topics...")
     # search
-    time.sleep(10)
     search_topics(zipf, config, node_to_topic)
     for future in PROCESSES:
         try:
@@ -35,6 +36,41 @@ def run_workload(out_dir,params):
 
     write_logs_to_file(os.path.join(out_dir, "logs", "logs.json"))
 
+
+def analyze(out_dir,params):
+
+    logs_dir = out_dir+"logs/"
+    fig_dir = out_dir+'figs/'
+
+    if not os.path.exists(fig_dir):
+        os.mkdir(fig_dir)
+
+    op_df = get_op_df(logs_dir)
+
+    msg_df = get_msg_df(logs_dir, op_df)
+    msg_df = msg_df.dropna(subset=['opid'])
+
+    plot_operation_returned(fig_dir,op_df)
+
+    plot_operation_times(fig_dir,op_df)
+
+    plot_msg_operation(fig_dir, msg_df)
+
+    plot_msg_sent_recv(fig_dir,msg_df)
+
+    plot_msg_sent_recv2(fig_dir,msg_df)
+
+    plot_msg_sent_distrib(fig_dir,msg_df)
+
+    plot_msg_topic(fig_dir,msg_df)
+
+    plot_times_discovered(fig_dir,op_df)
+
+    plot_search_results(fig_dir,op_df)
+
+    plot_waiting_time(fig_dir,msg_df)
+
+    
 def main() -> int:
 
     already_run = set()
@@ -77,6 +113,7 @@ def main() -> int:
                 run_workload(out_dir,params)
                 print("Workload done.")
                 stop_testbed(params)
+                analyze(out_dir,params)
 
 if __name__ == '__main__':
     sys.exit(main())

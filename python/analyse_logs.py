@@ -4,6 +4,10 @@ from dateutil.parser import parse
 import pandas as pd
 import hashlib
 import numpy
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import seaborn as sns
+import numpy
 
 log_path = "./discv5-test/logs"
 
@@ -153,11 +157,116 @@ def get_op_df(log_path):
 
     return op_df
 
+def plot_operation_returned(fig_dir,op_df):
+    ax = op_df['reply_received'].value_counts().plot(kind = 'pie', autopct='%1.0f%%', legend=True, title='Operation returned')
+    ax.figure.savefig(fig_dir + 'op_returned.eps',format='eps')
 
+def plot_operation_times(fig_dir,op_df):
+    fig, axes = plt.subplots()
+    df = op_df[~op_df['time'].isna()]
+    sns.violinplot(x='method',y='time', data=df, ax = axes, cut=0)
+    fig.savefig(fig_dir + 'operation_time.eps',format='eps')
 
+def plot_msg_operation(fig_dir,msg_df):
 
+    colors = ['red', 'green', 'blue', 'yellow']
 
+    for op_type, group_op_type in msg_df.groupby('op_type'):
 
+        fig, ax = plt.subplots()
+        legend_elements = []
+        added = set()
+        for opid, group_opid in group_op_type.groupby('opid'):
+            #print("\t", op_type)
+            i = 0
+            sum = 0
+            for msg_type, group_msg_type in group_opid.groupby('msg_type'):
+                val = len(group_msg_type)
+                ax.bar(opid, val, color=colors[i], bottom = sum)
+                sum += val
+            # print("\t\t", msg_type, len(group_msg_type))
+                if(msg_type not in added):
+                    added.add(msg_type)
+                    legend_elements.append(Line2D([0], [0], color=colors[i], lw=4, label=msg_type))
+                i += 1
+        ax.legend(handles=legend_elements)
+        ax.set_title(op_type)
+
+        fig.savefig(fig_dir + op_type+'.eps',format='eps')
+
+def plot_msg_sent_recv(fig_dir,msg_df):
+    ax = msg_df['in_out'].value_counts().plot(kind='pie', autopct='%1.0f%%', legend=True, title='Msgs sent/received')
+    ax.figure.savefig(fig_dir + 'msg_sent_received.eps',format='eps')
+
+def plot_msg_sent_recv2(fig_dir,msg_df):
+    sent = msg_df[msg_df['in_out'] == 'out']['node_id'].value_counts().to_dict()
+    sent = {int(k):int(v) for k,v in sent.items()} #convert IDs to int
+
+    received = msg_df[msg_df['in_out'] == 'out']['peer_id'].value_counts().to_dict()
+    received = {int(k):int(v) for k,v in received.items()} #convert IDs to int
+
+    fig, ax = plt.subplots()
+
+    width =0.3
+    ax.bar(sent.keys(), sent.values(), width=width, label = 'sent')
+    ax.bar([x + width for x in received.keys()], received.values(), width=width, label = 'received')
+    ax.legend()
+    ax.set_title('Messages exchanged')
+    ax.set_xlabel('Node ID')
+    ax.set_ylabel('#Messages')
+    fig.savefig(fig_dir + 'messages.eps',format='eps')
+
+def plot_msg_sent_distrib(fig_dir,msg_df):
+    fig, axes = plt.subplots()
+
+    df_in = msg_df[msg_df['in_out']=='in']['node_id'].value_counts().rename_axis('node_id').reset_index(name='count')
+    df_in['in_out'] = 'in'
+    df_out = msg_df[msg_df['in_out']=='out']['node_id'].value_counts().rename_axis('node_id').reset_index(name='count')
+    df_out['in_out'] = 'out'
+
+    df = pd.concat([df_in, df_out], axis=0)
+    sns.violinplot(x='in_out', y='count', data=df, ax = axes, cut=0, title='#Msg received/sent distribution per node')
+    fig.savefig(fig_dir + 'msg_rcv_dist.eps',format='eps')
+
+def plot_msg_topic(fig_dir,msg_df):
+    ax = msg_df['msg_type'].value_counts().plot(kind='bar')
+    ax.figure.savefig(fig_dir + 'msg_type_count.eps',format='eps')
+
+    for op_type, group_op_type in msg_df.groupby('op_type'):
+        print(op_type)
+        fig, ax = plt.subplots()
+        group_op_type['topic'].value_counts().plot(kind='bar', title=op_type)
+        ax.set_ylabel("#Messages")
+        fig.savefig(fig_dir + op_type+'_msg_per_topic.eps',format='eps')
+
+def plot_times_discovered(fig_dir,op_df):
+    op_df_exploded = op_df.copy()
+    op_df_exploded = op_df_exploded.explode('result')
+    fig, axes = plt.subplots()
+    op_df_exploded['result'].value_counts().plot(ax = axes,kind='bar')
+    axes.set_xticklabels([])
+    axes.set_xlabel("Discovered Nodes")
+    axes.set_ylabel("Count")
+    axes.set_yticks(list(op_df_exploded['result'].value_counts()))
+    fig.savefig(fig_dir + 'times_discovered.eps',format='eps')
+
+def plot_search_results(fig_dir,op_df):
+    op_df_exploded = op_df.copy()
+    op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
+    fig, axes = plt.subplots()
+    op_df_droppedNone['opid'].value_counts().plot(ax=axes, kind='bar')
+    axes.set_xlabel("Topic search operation")
+    axes.set_ylabel("Number of results")
+    axes.set_yticks(list(op_df_droppedNone['opid'].value_counts()))
+    fig.savefig(fig_dir + 'discovered_search.eps',format='eps')
+
+def plot_waiting_time(fig_dir,msg_df):
+
+    #consider only final regconfig message
+    df = msg_df.dropna(subset=['ok'], inplace=False)
+    fig, ax = plt.subplots()
+    sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
+    fig.savefig(fig_dir + 'waiting_time.eps',format='eps')
 
 #op_df = get_op_df('./discv5-test/logs')
 #print("op_df")
