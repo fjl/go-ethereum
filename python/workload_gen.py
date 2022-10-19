@@ -266,7 +266,7 @@ def search_topics(zipf, config, node_to_topic):
 def send_lookup(node, topic, config, op_id):
     global LOGS
     topic_digest = get_topic_digest(topic)
-    want_num_results = 1
+    want_num_results = config['returnedNodes']
     payload = {
         "method": "discv5_topicSearch",
         "params": [topic_digest, want_num_results, op_id],

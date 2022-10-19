@@ -24,8 +24,10 @@ def run_workload(out_dir,params):
     node_to_topic = register_topics(zipf, config)
 
     # wait for registrations to complete
-    print("Searching for topics...")
     # search
+    print("Waiting adlifetime...")
+    time.sleep(params['adLifetimeSeconds'])
+    print("Searching for topics...")
     search_topics(zipf, config, node_to_topic)
     for future in PROCESSES:
         try:
@@ -109,7 +111,6 @@ def main() -> int:
 
                 run_testbed(out_dir,params)
                 wait_for_nodes_ready(read_config(out_dir),node_neighbor_count)
-
                 run_workload(out_dir,params)
                 print("Workload done.")
                 stop_testbed(params)
