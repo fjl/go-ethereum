@@ -223,7 +223,7 @@ func (r *Registration) refillAttempts(b *regBucket) {
 
 // NextUpdateTime returns the next time Update should be called.
 func (r *Registration) NextUpdateTime() mclock.AbsTime {
-	for len(r.heap) > 0 {
+	if len(r.heap) > 0 {
 		att := r.heap[0]
 		switch att.State {
 		case Standby:
@@ -252,6 +252,7 @@ func (r *Registration) Update() *RegAttempt {
 			if now >= att.NextTime {
 				return att
 			}
+			return nil
 		}
 	}
 	return nil
