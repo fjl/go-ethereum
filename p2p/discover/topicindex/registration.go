@@ -238,21 +238,16 @@ func (r *Registration) NextUpdateTime() mclock.AbsTime {
 // Update processes the attempt queue and returns the next attempt in state 'Waiting'.
 func (r *Registration) Update() *RegAttempt {
 	now := r.cfg.Clock.Now()
-	for len(r.heap) > 0 {
+	for len(r.heap) > 0 && r.heap[0].NextTime <= now {
 		att := r.heap[0]
 		switch att.State {
 		case Standby:
 			panic("standby attempt in Registration.heap")
 		case Registered:
-			if now >= att.NextTime {
-				r.removeAttempt(att, "expired")
-				r.refillAttempts(att.bucket)
-			}
+			r.removeAttempt(att, "expired")
+			r.refillAttempts(att.bucket)
 		case Waiting:
-			if now >= att.NextTime {
-				return att
-			}
-			return nil
+			return att
 		}
 	}
 	return nil
