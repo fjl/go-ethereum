@@ -6,6 +6,19 @@ from python.network import *
 from python.workload_gen import *
 from python.analyse_logs import *
 
+import argparse
+
+def parseArguments():
+    # Create argument parser
+    parser = argparse.ArgumentParser()
+
+    # Print version
+    parser.add_argument("--docker", help="enable docker testbed",action=argparse.BooleanOptionalAction)
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    return args
 
 #turn a running config into a folder name
 def params_to_dir(params, type):
@@ -15,18 +28,16 @@ def params_to_dir(params, type):
             result += "_" + param + "-" + str(params[param])
     return result
 
-def run_workload(out_dir,params):
+def run_workload(config,out_dir,params):
     print("Starting registrations...")
     zipf = TruncatedZipfDist(zipf_exponent, params['topic'])
-
-    config = read_config(out_dir)
 
     node_to_topic = register_topics(zipf, config)
 
     # wait for registrations to complete
     # search
     #print("Waiting adlifetime...")
-    #time.sleep(params['adLifetimeSeconds'])
+    time.sleep(params['adLifetimeSeconds'])
     print("Searching for topics...")
     search_topics(zipf, config, node_to_topic)
     for future in PROCESSES:
@@ -73,7 +84,7 @@ def analyze(out_dir,params):
     plot_waiting_time(fig_dir,msg_df)
 
     
-def main() -> int:
+def main(docker) -> int:
 
     already_run = set()
     params = {}
@@ -108,13 +119,17 @@ def main() -> int:
                 else:    
                     out_dir = result_dir + "/benign/" + params_to_dir(params, type='benign') + "/"
                 os.system('mkdir -p ' + out_dir)
-
-                run_testbed(out_dir,params)
-                wait_for_nodes_ready(read_config(out_dir),node_neighbor_count)
-                run_workload(out_dir,params)
+                run_testbed(out_dir,params,docker)
+                config = read_config(out_dir)
+                wait_for_nodes_ready(config,node_neighbor_count)
+                run_workload(config,out_dir,params)
                 print("Workload done.")
-                stop_testbed(params)
+                stop_testbed(params,docker)
                 analyze(out_dir,params)
 
 if __name__ == '__main__':
-    sys.exit(main())
+
+        # Parse the arguments
+    args = parseArguments()
+
+    sys.exit(main(args.docker))
