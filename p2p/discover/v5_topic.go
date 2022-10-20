@@ -180,7 +180,6 @@ func (reg *topicReg) pause(lastTime mclock.AbsTime) bool {
 func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 	var (
 		updateEv      = mclock.NewAlarm(reg.clock)
-		updateCh      <-chan struct{}
 		sendAttempt   *topicindex.RegAttempt
 		sendAttemptCh chan<- *topicindex.RegAttempt
 	)
@@ -192,6 +191,7 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 		}
 
 		// Disable updates while dispatching the next attempt's request.
+		var updateCh <-chan struct{}
 		if sendAttempt == nil {
 			next := reg.state.NextUpdateTime()
 			if next != topicindex.Never {
@@ -210,7 +210,6 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 
 		// Attempt queue updates.
 		case <-updateCh:
-			updateCh = nil
 			att := reg.state.Update()
 			if att != nil {
 				sendAttempt = att
