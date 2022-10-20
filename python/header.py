@@ -6,7 +6,7 @@ features =  {'nodes': {'type': 'benign', 'default': 100,'defaultAttack': 100, 'v
              'adCacheSize': {'type': 'benign', 'default': 500, 'defaultAttack': 500, 'vals':[500]},
              'rpcBasePort': {'type': 'benign', 'default': 20200, 'defaultAttack': 20200, 'vals':[20200]},
              'udpBasePort': {'type': 'benign', 'default': 30200, 'defaultAttack': 30200, 'vals':[30200]},
-             'returnedNodes': {'type': 'benign', 'default': 1, 'defaultAttack': 1, 'vals':[1]},
+             'returnedNodes': {'type': 'benign', 'default': 30, 'defaultAttack': 30, 'vals':[30]},
 }
 
 

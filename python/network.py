@@ -2,7 +2,7 @@ import os
 import json
 import time
 import subprocess
-import signal
+import psutil
 
 run_param={'adCacheSize','adLifetimeSeconds','regBucketSize','searchBucketSize'}
 proc = []
@@ -77,16 +77,16 @@ def start_nodes(config_path,params,json):
         #os.system("./devp2p $logflags discv5 listen $nodeflags 2>"+logfile+" >"+logfile+" &")
         log = open(logfile, 'a')
         #print("./devp2p "+logflags+" discv5 listen "+nodeflags)
-        proc.append(subprocess.Popen(["./devp2p "+logflags+" discv5 listen "+nodeflags],stdout=log,stderr=log,shell=True))
+        process = subprocess.Popen(["./devp2p "+logflags+" discv5 listen "+nodeflags],stdout=log,stderr=log,shell=True, preexec_fn=os.setsid)
+        proc.append(process)
 
     print("Nodes started")
 
 def stop_nodes(n):
     print("Stopping nodes..")
-    for i in range(n):
-        #print(proc[i].pid)
-        proc[i].kill()
-        #os.kill(proc[i].pid, signal.SIGKILL
+    for p in proc:
+
+        kill(p.pid)
 
 def run_testbed(config_path,params):
     
@@ -95,5 +95,13 @@ def run_testbed(config_path,params):
     write_experiment(config_path,params)
     start_nodes(config_path,params,True)
     time.sleep(10)
+
 def stop_testbed(params):
     stop_nodes(params['nodes'])
+
+def kill(proc_pid):
+    #print("Process:"+str(proc_pid))
+    process = psutil.Process(proc_pid)
+    for proc in process.children(recursive=True):
+        proc.kill()
+    process.kill()

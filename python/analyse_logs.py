@@ -11,7 +11,7 @@ import numpy
 
 #log_path = "./discv5-test/logs"
 log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
-
+form = 'pdf'
 def get_msg_df(log_path, op_df):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
@@ -160,13 +160,13 @@ def get_op_df(log_path):
 
 def plot_operation_returned(fig_dir,op_df):
     ax = op_df['reply_received'].value_counts().plot(kind = 'pie', autopct='%1.0f%%', legend=True, title='Operation returned')
-    ax.figure.savefig(fig_dir + 'op_returned.eps',format='eps')
+    ax.figure.savefig(fig_dir + 'op_returned.'+form,format=form)
 
 def plot_operation_times(fig_dir,op_df):
     fig, axes = plt.subplots()
     df = op_df[~op_df['time'].isna()]
     sns.violinplot(x='method',y='time', data=df, ax = axes, cut=0)
-    fig.savefig(fig_dir + 'operation_time.eps',format='eps')
+    fig.savefig(fig_dir + 'operation_time.'+form,format=form)
 
 def plot_msg_operation(fig_dir,msg_df):
 
@@ -193,11 +193,11 @@ def plot_msg_operation(fig_dir,msg_df):
         ax.legend(handles=legend_elements)
         ax.set_title(op_type)
 
-        fig.savefig(fig_dir + op_type+'.eps',format='eps')
+        fig.savefig(fig_dir + op_type+'.'+form,format=form)
 
 def plot_msg_sent_recv(fig_dir,msg_df):
     ax = msg_df['in_out'].value_counts().plot(kind='pie', autopct='%1.0f%%', legend=True, title='Msgs sent/received')
-    ax.figure.savefig(fig_dir + 'msg_sent_received.eps',format='eps')
+    ax.figure.savefig(fig_dir + 'msg_sent_received.'+form,format=form)
 
 def plot_msg_sent_recv2(fig_dir,msg_df):
     sent = msg_df[msg_df['in_out'] == 'out']['node_id'].value_counts().to_dict()
@@ -215,7 +215,7 @@ def plot_msg_sent_recv2(fig_dir,msg_df):
     ax.set_title('Messages exchanged')
     ax.set_xlabel('Node ID')
     ax.set_ylabel('#Messages')
-    fig.savefig(fig_dir + 'messages.eps',format='eps')
+    fig.savefig(fig_dir + 'messages.'+form,format=form)
 
 def plot_msg_sent_distrib(fig_dir,msg_df):
     fig, axes = plt.subplots()
@@ -227,18 +227,23 @@ def plot_msg_sent_distrib(fig_dir,msg_df):
 
     df = pd.concat([df_in, df_out], axis=0)
     sns.violinplot(x='in_out', y='count', data=df, ax = axes, cut=0, title='#Msg received/sent distribution per node')
-    fig.savefig(fig_dir + 'msg_rcv_dist.eps',format='eps')
+    fig.savefig(fig_dir + 'msg_rcv_dist.'+form,format=form)
+
 
 def plot_msg_topic(fig_dir,msg_df):
+    fig, ax = plt.subplots()
     ax = msg_df['msg_type'].value_counts().plot(kind='bar')
-    ax.figure.savefig(fig_dir + 'msg_type_count.eps',format='eps')
+    ax.figure.savefig(fig_dir + 'msg_type_count.'+form,format=form,bbox_inches="tight")
+
+def plot_msg_op_topic(fig_dir,msg_df):
+    fig, ax = plt.subplots()
 
     for op_type, group_op_type in msg_df.groupby('op_type'):
         print(op_type)
         fig, ax = plt.subplots()
         group_op_type['topic'].value_counts().plot(kind='bar', title=op_type)
         ax.set_ylabel("#Messages")
-        fig.savefig(fig_dir + op_type+'_msg_per_topic.eps',format='eps')
+        fig.savefig(fig_dir + op_type+'_msg_per_topic.'+form,format=form)
 
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
@@ -249,7 +254,7 @@ def plot_times_discovered(fig_dir,op_df):
     axes.set_xlabel("Discovered Nodes")
     axes.set_ylabel("Count")
     axes.set_yticks(list(op_df_exploded['result'].value_counts()))
-    fig.savefig(fig_dir + 'times_discovered.eps',format='eps')
+    fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
 def plot_search_results(fig_dir,op_df):
 
@@ -262,7 +267,7 @@ def plot_search_results(fig_dir,op_df):
     axes.set_ylabel("Number of results")
     axes.set_yticks(list(op_df_droppedNone['opid'].value_counts()))
 
-    fig.savefig(fig_dir + 'discovered_search.eps',format='eps')
+    fig.savefig(fig_dir + 'discovered_search.'+form,format=form)
 
 def plot_waiting_time(fig_dir,msg_df):
 
@@ -270,7 +275,7 @@ def plot_waiting_time(fig_dir,msg_df):
     df = msg_df.dropna(subset=['ok'], inplace=False)
     fig, ax = plt.subplots()
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
-    fig.savefig(fig_dir + 'waiting_time.eps',format='eps')
+    fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
 
 #op_df = get_op_df('./discv5-test/logs')
 #print("op_df")
