@@ -1,4 +1,4 @@
-features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 100, 'vals':[50]},
+features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 50, 'vals':[50]},
              'topic': {'type': 'benign', 'default': 1, 'defaultAttack': 1,'vals':[1]},
              'regBucketSize': {'type': 'benign', 'default': 10, 'defaultAttack': 10, 'vals':[10]},
              'searchBucketSize': {'type': 'benign', 'default': 3, 'defaultAttack': 3, 'vals':[3]},
@@ -10,4 +10,4 @@ features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 100, 'va
 }
 
 
-result_dir = './discv5_test_logs'
+result_dir = '/discv5_test_logs'
