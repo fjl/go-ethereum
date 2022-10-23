@@ -221,7 +221,7 @@ func (tab *Table) refresh() <-chan struct{} {
 func (tab *Table) loop() {
 	var (
 		revalidate     = time.NewTimer(tab.nextRevalidateTime())
-		refresh        = time.NewTicker(tab.cfg.RefreshInterval)
+		refresh        = time.NewTimer(tab.nextRefreshTime())
 		copyNodes      = time.NewTicker(copyNodesInterval)
 		refreshDone    = make(chan struct{})           // where doRefresh reports completion
 		revalidateDone chan struct{}                   // where doRevalidate reports completion
@@ -254,6 +254,7 @@ loop:
 				close(ch)
 			}
 			waiting, refreshDone = nil, nil
+			refresh.Reset(tab.nextRefreshTime())
 		case <-revalidate.C:
 			revalidateDone = make(chan struct{})
 			go tab.doRevalidate(revalidateDone)
@@ -383,6 +384,13 @@ func (tab *Table) nextRevalidateTime() time.Duration {
 	defer tab.mutex.Unlock()
 
 	return time.Duration(tab.rand.Int63n(int64(tab.cfg.PingInterval)))
+}
+
+func (tab *Table) nextRefreshTime() time.Duration {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	return tab.cfg.RefreshInterval + time.Duration(tab.rand.Int63n(int64(time.Second)))
 }
 
 // copyLiveNodes adds nodes from the table to the database if they have been in the table
