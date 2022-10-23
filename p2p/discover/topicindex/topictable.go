@@ -114,19 +114,6 @@ func (tab *TopicTable) Expire() {
 	}
 }
 
-// nextTopicExpiryTime returns the time when the next registration of topic t expires.
-func (tab *TopicTable) nextTopicExpiryTime(t TopicID) mclock.AbsTime {
-	list := tab.reg[t]
-	if list == nil {
-		return 0
-	}
-	e := list.Front()
-	if e == nil {
-		return 0 // cannot happen
-	}
-	return e.Value.(*topicTableEntry).exp
-}
-
 // isRegistered reports whether n is currently registered for topic t.
 func (tab *TopicTable) isRegistered(n *enode.Node, t TopicID) bool {
 	list := tab.reg[t]

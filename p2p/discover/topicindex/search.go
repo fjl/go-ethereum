@@ -17,8 +17,6 @@
 package topicindex
 
 import (
-	"time"
-
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -31,9 +29,6 @@ const (
 	// Should there be any nodes which are closer than this, they just go into the last
 	// (closest) bucket.
 	searchTableDepth = 40
-
-	// This defines the minimum delay between two lookups started by Search.
-	searchLookupMinDelay = 3 * time.Second
 
 	// IP subnet limit.
 	searchBucketSubnet, searchBucketIPLimit = 24, 1

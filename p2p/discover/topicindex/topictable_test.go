@@ -72,11 +72,3 @@ func newNode() *enode.Node {
 	mrand.Read(id[:])
 	return enode.SignNull(&r, id)
 }
-
-func generateNodes(n int) []*enode.Node {
-	nodes := make([]*enode.Node, n)
-	for i := 0; i < n; i++ {
-		nodes[i] = newNode()
-	}
-	return nodes
-}

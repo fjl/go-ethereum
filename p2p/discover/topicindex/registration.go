@@ -333,10 +333,6 @@ func (r *Registration) removeAttempt(att *RegAttempt, reason string) {
 	att.bucket.count[att.State]--
 }
 
-func (r *Registration) bucket(id enode.ID) *regBucket {
-	return &r.buckets[r.bucketIndex(id)]
-}
-
 func (r *Registration) bucketIndex(id enode.ID) int {
 	dist := enode.LogDist(enode.ID(r.topic), id)
 	index := dist - 256 + (len(r.buckets) - 1)
