@@ -19,7 +19,9 @@ package topicindex
 import (
 	"time"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
 const (
@@ -32,16 +34,21 @@ const (
 
 	// This defines the minimum delay between two lookups started by Search.
 	searchLookupMinDelay = 3 * time.Second
+
+	// IP subnet limit.
+	searchBucketSubnet, searchBucketIPLimit = 24, 1
 )
 
 // Search is the state associated with searching for a single topic.
 type Search struct {
 	topic TopicID
 	cfg   Config
+	log   log.Logger
 
 	// Note: search buckets are ordered far -> close.
 	buckets [searchTableDepth]searchBucket
 
+	bucketCheck  map[int]struct{}
 	resultBuffer []*enode.Node
 	numResults   int
 
@@ -53,17 +60,30 @@ type searchBucket struct {
 	new        map[enode.ID]*enode.Node
 	asked      map[enode.ID]struct{}
 	numResults int
+
+	ips netutil.DistinctNetSet
 }
 
 // NewSearch creates a new topic search state.
-func NewSearch(topic TopicID, config Config) *Search {
-	config = config.withDefaults()
-	s := &Search{cfg: config, topic: topic}
+func NewSearch(topic TopicID, cfg Config) *Search {
+	cfg = cfg.withDefaults()
+	s := &Search{
+		cfg:         cfg,
+		log:         cfg.Log.New("topic", topic),
+		topic:       topic,
+		bucketCheck: make(map[int]struct{}, searchTableDepth),
+	}
 	dist := 256
 	for i := range s.buckets {
-		s.buckets[i].new = make(map[enode.ID]*enode.Node)
-		s.buckets[i].asked = make(map[enode.ID]struct{})
-		s.buckets[i].dist = dist
+		s.buckets[i] = searchBucket{
+			dist:  dist,
+			new:   make(map[enode.ID]*enode.Node, cfg.SearchBucketSize),
+			asked: make(map[enode.ID]struct{}, cfg.SearchBucketSize),
+			ips: netutil.DistinctNetSet{
+				Subnet: searchBucketSubnet,
+				Limit:  searchBucketIPLimit,
+			},
+		}
 		dist--
 	}
 	return s
@@ -97,20 +117,43 @@ func (s *Search) IsDone() bool {
 	return s.queriesWithoutNewNodes >= 2
 }
 
-// AddNodes adds the results of a lookup to the table.
+// AddNodes adds potential registrars to the table.
+// If src is non-nil, it is assumed that the nodes were sent by that node.
 func (s *Search) AddNodes(src *enode.Node, nodes []*enode.Node) {
+	// Clear the one-per-bucket check table.
+	for k := range s.bucketCheck {
+		delete(s.bucketCheck, k)
+	}
+
 	var anyNewNode bool
 	for _, n := range nodes {
-		if n.ID() == s.cfg.Self {
+		id := n.ID()
+		if id == s.cfg.Self {
 			continue
 		}
-		b := s.bucket(n.ID())
-		if !b.contains(n.ID()) {
-			anyNewNode = true
+
+		bi := s.bucketIndex(n.ID())
+		b := &s.buckets[bi]
+
+		if b.contains(id) {
+			continue
 		}
-		if b.count() < s.cfg.SearchBucketSize {
-			b.add(n)
+		if b.count() >= s.cfg.SearchBucketSize {
+			continue
 		}
+		if src != nil {
+			if _, ok := s.bucketCheck[bi]; ok {
+				s.cfg.Log.Debug("Ignoring search node", "id", n.ID(), "reason", "one-per-bucket-rule")
+				continue
+			}
+		}
+		if !b.ips.Add(n.IP()) {
+			s.cfg.Log.Debug("Ignoring search node", "id", n.ID(), "reason", "iplimit")
+		}
+
+		// All checks passed, add the node.
+		anyNewNode = true
+		b.new[id] = n
 	}
 
 	if !anyNewNode {
@@ -163,12 +206,16 @@ func (s *Search) PopResult() {
 	s.resultBuffer = append(s.resultBuffer[:0], s.resultBuffer[1:]...)
 }
 
-func (s *Search) bucket(id enode.ID) *searchBucket {
+func (s *Search) bucketIndex(id enode.ID) int {
 	dist := 256 - enode.LogDist(enode.ID(s.topic), id)
 	if dist > len(s.buckets)-1 {
 		dist = len(s.buckets) - 1
 	}
-	return &s.buckets[dist]
+	return dist
+}
+
+func (s *Search) bucket(id enode.ID) *searchBucket {
+	return &s.buckets[s.bucketIndex(id)]
 }
 
 func (b *searchBucket) contains(id enode.ID) bool {
@@ -181,28 +228,7 @@ func (b *searchBucket) count() int {
 	return len(b.new) + len(b.asked)
 }
 
-func (b *searchBucket) add(n *enode.Node) {
-	id := n.ID()
-	if _, inAsked := b.asked[id]; inAsked {
-		return
-	}
-	b.new[id] = newer(b.new[id], n)
-}
-
 func (b *searchBucket) setAsked(n *enode.Node) {
 	b.asked[n.ID()] = struct{}{}
 	delete(b.new, n.ID())
-}
-
-func newer(n1 *enode.Node, n2 *enode.Node) *enode.Node {
-	switch {
-	case n1 == nil:
-		return n2
-	case n2 == nil:
-		return n1
-	case n1.Seq() >= n2.Seq():
-		return n1
-	default:
-		return n2
-	}
 }
