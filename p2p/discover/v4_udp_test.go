@@ -110,7 +110,7 @@ func (test *udpTest) packetInFrom(wantError error, key *ecdsa.PrivateKey, addr *
 func (test *udpTest) waitPacketOut(validate interface{}) (closed bool) {
 	test.t.Helper()
 
-	dgram, err := test.pipe.receive()
+	dgram, err := test.pipe.receive(3 * time.Second)
 	if err == errClosed {
 		return true
 	} else if err != nil {
@@ -638,18 +638,20 @@ func (c *dgramPipe) LocalAddr() net.Addr {
 	return &net.UDPAddr{IP: testLocal.IP, Port: int(testLocal.UDP)}
 }
 
-func (c *dgramPipe) receive() (dgram, error) {
+func (c *dgramPipe) receive(timeout time.Duration) (dgram, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	var timedOut bool
-	timer := time.AfterFunc(3*time.Second, func() {
-		c.mu.Lock()
-		timedOut = true
-		c.mu.Unlock()
-		c.cond.Broadcast()
-	})
-	defer timer.Stop()
+	if timeout >= 0 {
+		timer := time.AfterFunc(timeout, func() {
+			c.mu.Lock()
+			timedOut = true
+			c.mu.Unlock()
+			c.cond.Broadcast()
+		})
+		defer timer.Stop()
+	}
 
 	for len(c.queue) == 0 && !c.closed && !timedOut {
 		c.cond.Wait()

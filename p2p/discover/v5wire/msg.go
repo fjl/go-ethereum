@@ -105,9 +105,9 @@ type (
 
 	// NODES is the reply to FINDNODE and TOPICQUERY.
 	Nodes struct {
-		ReqID []byte
-		Total uint8
-		Nodes []*enr.Record
+		ReqID         []byte
+		ResponseCount uint8
+		Nodes         []*enr.Record
 	}
 
 	// TALKREQ is an application-level request.
@@ -137,10 +137,10 @@ type (
 
 	// REGCONFIRMATION is the reply to REGTOPIC.
 	Regconfirmation struct {
-		ReqID      []byte
-		NodesCount uint8  // number of additional NODES responses
-		Ticket     []byte // registered successfully if length zero
-		WaitTime   uint   // how to wait until sending next REGTOPIC (in ms)
+		ReqID         []byte
+		ResponseCount uint8  // number of additional NODES responses
+		Ticket        []byte // registered successfully if length zero
+		WaitTime      uint   // how to wait until sending next REGTOPIC (in ms)
 		// Note: when len(Ticket) == 0, registration is successful and
 		// WaitTime is the registration lifetime.
 
@@ -159,9 +159,9 @@ type (
 
 	// TOPICNODES is one of the responses to TOPICQUERY.
 	TopicNodes struct {
-		ReqID []byte
-		Total uint8
-		Nodes []*enr.Record
+		ReqID         []byte
+		ResponseCount uint8
+		Nodes         []*enr.Record
 	}
 )
 
@@ -258,7 +258,7 @@ func (p *Nodes) SetRequestID(id []byte) { p.ReqID = id }
 func (p *Nodes) AppendLogInfo(ctx []interface{}) []interface{} {
 	return append(ctx,
 		"req", hexutil.Bytes(p.ReqID),
-		"tot", p.Total,
+		"tot", p.ResponseCount,
 		"n", len(p.Nodes),
 	)
 }
@@ -334,7 +334,7 @@ func (p *TopicNodes) SetRequestID(id []byte) { p.ReqID = id }
 func (p *TopicNodes) AppendLogInfo(ctx []interface{}) []interface{} {
 	return append(ctx,
 		"req", hexutil.Bytes(p.ReqID),
-		"tot", p.Total,
+		"tot", p.ResponseCount,
 		"n", len(p.Nodes),
 	)
 }

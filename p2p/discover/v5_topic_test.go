@@ -47,9 +47,9 @@ func TestTopicReg(t *testing.T) {
 // This test checks that topic registration will pick up new nodes
 // when they are added to the main node table.
 func TestTopicRegNodeTableUpdates(t *testing.T) {
-	cfg := Config{
-		PingInterval: 1 * time.Second,
-	}
+	t.Parallel()
+
+	cfg := Config{PingInterval: 500 * time.Millisecond}
 	test := newUDPV5Test(t, cfg)
 	defer test.close()
 
@@ -64,7 +64,7 @@ func TestTopicRegNodeTableUpdates(t *testing.T) {
 
 	var gotRegtopic, gotPing bool
 	for !gotRegtopic || !gotPing {
-		test.waitPacketOut(func(p v5wire.Packet, addr *net.UDPAddr, _ v5wire.Nonce) {
+		test.waitPacketOut(1*time.Second, func(p v5wire.Packet, addr *net.UDPAddr, _ v5wire.Nonce) {
 			if !addr.IP.Equal(ln1.Node().IP()) {
 				t.Fatal(p.Name(), "to wrong node", addr, "want", ln1.Node().IP())
 			}
@@ -88,17 +88,19 @@ func TestTopicRegNodeTableUpdates(t *testing.T) {
 	// Now add node2 and wait for the table to verify its liveness.
 	test.table.addSeenNode(wrapNode(ln2.Node()))
 
-	test.waitPacketOut(func(p *v5wire.Ping, addr *net.UDPAddr, _ v5wire.Nonce) {
-		if !addr.IP.Equal(ln2.Node().IP()) {
-			t.Fatal(p.Name(), "to wrong node", addr)
-		}
-		test.packetInFrom(key2, addr, &v5wire.Pong{
-			ReqID: p.ReqID,
+	var pingedNode2 bool
+	for !pingedNode2 {
+		test.waitPacketOut(1*time.Second, func(p *v5wire.Ping, addr *net.UDPAddr, _ v5wire.Nonce) {
+			if !addr.IP.Equal(ln2.Node().IP()) {
+				return
+			}
+			pingedNode2 = true
+			test.packetInFrom(key2, addr, &v5wire.Pong{ReqID: p.ReqID})
 		})
-	})
+	}
 
 	// A registration attempt should be made with node2.
-	test.waitPacketOut(func(p *v5wire.Regtopic, addr *net.UDPAddr, _ v5wire.Nonce) {
+	test.requirePacketOut(func(p *v5wire.Regtopic, addr *net.UDPAddr, _ v5wire.Nonce) {
 		if !addr.IP.Equal(ln2.Node().IP()) {
 			t.Fatal(p.Name(), "to wrong node", addr)
 		}
@@ -138,5 +140,14 @@ func TestTopicSearch(t *testing.T) {
 	it := node2.TopicSearch(topic, 0)
 	defer it.Close()
 	nodes := enode.ReadNodes(it, 2)
+	sortByID(nodes)
+
+	wantNodes := []*enode.Node{node0.Self(), node3.Self()}
+	sortByID(wantNodes)
+
+	err := checkNodesEqual(nodes, wantNodes)
+	if err != nil {
+		t.Error(err)
+	}
 	t.Log("found nodes:", nodes)
 }

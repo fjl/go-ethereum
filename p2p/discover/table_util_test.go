@@ -76,6 +76,18 @@ func nodesToRecords(nodes []*enode.Node) []*enr.Record {
 	return records
 }
 
+func recordsToNodes(validSchemes enr.IdentityScheme, records []*enr.Record) []*enode.Node {
+	nodes := make([]*enode.Node, len(records))
+	for i, r := range records {
+		n, err := enode.New(validSchemes, r)
+		if err != nil {
+			panic(err)
+		}
+		nodes[i] = n
+	}
+	return nodes
+}
+
 // idAtDistance returns a random hash such that enode.LogDist(a, b) == n
 func idAtDistance(a enode.ID, n int) (b enode.ID) {
 	if n == 0 {
@@ -193,11 +205,12 @@ func hasDuplicates(slice []*node) bool {
 
 // checkNodesEqual checks whether the two given node lists contain the same nodes.
 func checkNodesEqual(got, want []*enode.Node) error {
-	if len(got) == len(want) {
-		for i := range got {
-			if !nodeEqual(got[i], want[i]) {
-				goto NotEqual
-			}
+	if len(got) != len(want) {
+		goto NotEqual
+	}
+	for i := range got {
+		if !nodeEqual(got[i], want[i]) {
+			goto NotEqual
 		}
 	}
 	return nil
