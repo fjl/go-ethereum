@@ -8,10 +8,104 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import seaborn as sns
 import numpy
+import heapq # to sort register removal events 
+import time 
 
 #log_path = "./discv5-test/logs"
 log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
 form = 'pdf'
+log_path = "../discv5-test/logs"
+
+def get_storage_df(log_path):
+    topic_mapping = {} #reverse engineer the topic hash
+    for i in range(1, 100):
+        topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
+    init_time = None
+    heap = []
+    table_size = {}
+    table_size_ot = {} # table size over time 
+    nodes = set()
+    for log_file in os.listdir(log_path):
+        if (not log_file.startswith("node-")):
+            continue
+        print("Reading", log_file)
+        node = log_file.split('-')[1].split('.')[0] #node-10.log
+        nodes.add(node)
+        for line in open(log_path + '/' + log_file, 'r').readlines():
+            if(line[0] != '{'):
+                #not a json line
+                continue
+            jsons = json.loads(line)
+            # parse time
+            dt = parse(jsons['t'])
+            unix_time = int(time.mktime(dt.timetuple()))
+            if init_time is None:
+                init_time = unix_time
+                unix_time = 0
+            else:
+                unix_time -= init_time
+            
+            timestamp = unix_time
+            min_time = None
+            if len(heap) > 0:
+                tupl = heap[0]
+                min_time = tupl[0]
+            if(min_time is not None and min_time <= timestamp):
+                min_time, node = heapq.heappop(heap)
+                table_size[node] = table_size[node] - 1
+                if min_time not in table_size_ot.keys():
+                    table_size_ot[min_time] = []
+                table_size_ot[min_time].append({'node':node, 'size':table_size[node]})
+                print('Removing registration by node: ', node, 'at time:', min_time)
+
+            if('adlifetime' not in jsons):
+               continue
+            in_out_s = jsons['msg'].split(' ')[0]
+            msg_type = jsons['msg'].split(' ')[1]
+            if msg_type != 'REGCONFIRMATION/v5':
+                continue 
+            if(in_out_s != '>>'):
+                continue
+            adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
+            peer = int(jsons['addr'].split(':')[1]) - 30200
+
+            if(peer == node):
+                print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
+            #topic = jsons['topic']
+            
+            if node not in table_size.keys():
+                table_size[node] = 1
+            else:
+                table_size[node] = table_size[node] + 1
+            if timestamp not in table_size_ot.keys():
+                table_size_ot[timestamp] = []
+            table_size_ot[timestamp].append({'node': node, 'size':table_size[node]})
+            print('Timestamp:', timestamp, 'node:', node, 'size:', table_size[node], 'adlifetime:', adlifetime)
+            heapq.heappush(heap, (timestamp + adlifetime, node))
+
+    rows = []
+    times = list(table_size_ot.keys())
+    times = sorted(times)
+    print('table_size: ', table_size)
+    table_size = {}
+    for node in list(nodes):
+        table_size[node] = 0
+        
+    for timestamp in times:
+        row = {}
+        vals = table_size_ot[timestamp]
+        for val in vals:
+            table_size[val['node']] = val['size']
+        for node in list(nodes):
+            row['timestamp'] = timestamp
+            row['node' + str(node)] = table_size[node]
+            
+        rows.append(row)
+
+    storage_df = pd.DataFrame(rows)
+
+    return storage_df
+
 def get_msg_df(log_path, op_df):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
@@ -276,6 +370,20 @@ def plot_waiting_time(fig_dir,msg_df):
     fig, ax = plt.subplots()
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
+
+def plot_storage_per_node_over_time(fig_dir, storage_df):
+    fig, axes = plt.subplots()
+    axes.set_xlabel("Time (msec)")
+    axes.set_ylabel("Number of active registrations stored")
+    for column_name in storage_df:
+        if 'node' in column_name:
+            storage_df.plot(ax=axes, x='timestamp', y=column_name)
+    lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
+    fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
+
+storage_df = get_storage_df(log_path)
+print('Storage_df:', storage_df)
+plot_storage_per_node_over_time('./', storage_df)
 
 #op_df = get_op_df('./discv5-test/logs')
 #print("op_df")
