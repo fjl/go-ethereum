@@ -3,7 +3,7 @@
 #docker-compose down
 #dcker network prune
 
-N=1000
+N=50
 
 cleanup() {
     docker stop bootstrap-node

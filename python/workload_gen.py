@@ -18,6 +18,7 @@ import scipy.stats as ss
 import json
 import time
 import queue
+from python.network import *
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -81,6 +82,26 @@ def send_register(node, topic, config, op_id):
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     LOGS.put(resp)
+
+def send_register_docker(node, topic, config, op_id):
+    global LOGS
+    topic_digest = get_topic_digest(topic)
+    payload = {
+        "method": "discv5_registerTopic",
+        "params": [topic_digest, op_id],
+        "jsonrpc": "2.0",
+        "id": op_id,
+    }
+    payload["opid"] = op_id
+    payload["time"] = get_current_time_msec()
+    LOGS.put(payload)
+
+    print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
+    resp = requests.post(node_api_url_docker(node, config), json=payload).json()
+    resp["opid"] = op_id
+    resp["time"] = get_current_time_msec()
+    LOGS.put(resp)
+
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator
@@ -191,8 +212,6 @@ class TruncatedZipfDist(DiscreteDist):
 def wait_for_nodes_ready(config, count):
     min_neighbors = min(config['nodes']-1, 10)
     nodes = list(range(1, config['nodes'] + 1))
-    #print("min:"+str(min_neighbors))
-    #print("nodes:"+str(nodes))
     global MAX_REQUEST_THREADS
     with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
         while len(nodes) > 0:
@@ -220,11 +239,15 @@ def wait_for_nodes_ready(config, count):
 def node_neighbor_count(node, config):
     payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
     resp = requests.post(node_api_url(node, config), json=payload).json()
-    #print("Result:"+str(node)+" "+str(resp['result']))
+    return len(resp['result'])
+
+def node_neighbor_count_docker(node,config):
+    payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
+    resp = requests.post(node_api_url_docker(node, config), json=payload).json()
     return len(resp['result'])
 
 # perform topic registrations
-def register_topics(zipf, config):
+def register_topics(zipf, config, docker):
     node_topic = {}
     time_now = float(time.time())
     nodes = list(range(1, config['nodes'] + 1))
@@ -248,13 +271,16 @@ def register_topics(zipf, config):
                 topic = "t" + str(zipf.rv() + 1)
                 node_topic[node] = topic
                 #send_register(node, topic, config)
-                PROCESSES.append(executor.submit(send_register,node, topic, config, gen_op_id()))
+                if docker:
+                    PROCESSES.append(executor.submit(send_register_docker,node, topic, config, gen_op_id()))
+                else:
+                    PROCESSES.append(executor.submit(send_register,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
 
     return node_topic
 
 
-def search_topics(zipf, config, node_to_topic):
+def search_topics(zipf, config, node_to_topic,docker):
     nodes = list(range(1, config['nodes'] + 1))
     node = random.choice(nodes)
     nodes = list(range(1, config['nodes'] + 1))
@@ -280,7 +306,10 @@ def search_topics(zipf, config, node_to_topic):
                 nodes.remove(node)
                 topic = node_to_topic[node]
                 #send_register(node, topic, config)
-                PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
+                if docker:
+                    PROCESSES.append(executor.submit(send_lookup_docker,node, topic, config, gen_op_id()))
+                else:
+                    PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
 
 def send_lookup(node, topic, config, op_id):
@@ -304,6 +333,26 @@ def send_lookup(node, topic, config, op_id):
     print('Search response: ', resp)
     LOGS.put(resp)
 
+def send_lookup_docker(node, topic, config, op_id):
+    global LOGS
+    topic_digest = get_topic_digest(topic)
+    want_num_results = config['returnedNodes']
+    payload = {
+        "method": "discv5_topicSearch",
+        "params": [topic_digest, want_num_results, op_id],
+        "jsonrpc": "2.0",
+        "id": op_id,
+    }
+    payload["opid"] = op_id
+    payload["time"] = get_current_time_msec()
+    LOGS.put(payload)
+
+    print('Node {} is searching for {} nodes in topic: {}'.format(node, want_num_results, topic))
+    resp = requests.post(node_api_url_docker(node, config), json=payload).json()
+    resp["opid"] = op_id
+    resp["time"] = get_current_time_msec()
+    print('Search response: ', resp)
+    LOGS.put(resp)
 
 def node_api_url(node, config):
     port = config['rpcBasePort'] + node
@@ -311,6 +360,10 @@ def node_api_url(node, config):
     url = def_url_prefix + ":" + str(port)
     return url
 
+def node_api_url_docker(node, config):
+    port = config['rpcBasePort']
+    url = "http://" +get_network(node)+".2:" + str(port)
+    return url
 
 def read_config(dir):
     file = os.path.join(dir, 'experiment.json')

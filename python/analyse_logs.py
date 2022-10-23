@@ -12,9 +12,9 @@ import heapq # to sort register removal events
 import time 
 
 #log_path = "./discv5-test/logs"
-log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
+#log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
 form = 'pdf'
-log_path = "../discv5-test/logs"
+#log_path = "../discv5-test/logs"
 
 def get_storage_df(log_path):
     topic_mapping = {} #reverse engineer the topic hash
@@ -400,9 +400,9 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
     lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
-storage_df = get_storage_df(log_path)
-print('Storage_df:', storage_df)
-plot_storage_per_node_over_time('./', storage_df)
+#storage_df = get_storage_df(log_path)
+#print('Storage_df:', storage_df)
+#plot_storage_per_node_over_time('./', storage_df)
 
 #op_df = get_op_df('./discv5-test/logs')
 #print("op_df")
