@@ -18,46 +18,25 @@ log_path = "../discv5-test/logs"
 
 def get_storage_df(log_path):
     topic_mapping = {} #reverse engineer the topic hash
-    for i in range(1, 100):
+    for i in range(1, 1000):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
-    init_time = None
-    heap = []
-    table_size = {}
-    table_size_ot = {} # table size over time 
+    ad_expiry_heap = []
+    reg_events_heap = []
     nodes = set()
+
+    # Read all the registration events and add them to a heap
     for log_file in os.listdir(log_path):
         if (not log_file.startswith("node-")):
             continue
         print("Reading", log_file)
-        node = log_file.split('-')[1].split('.')[0] #node-10.log
-        nodes.add(node)
+        advertiser = int(log_file.split('-')[1].split('.')[0]) #node-10.log
+        nodes.add(advertiser)
         for line in open(log_path + '/' + log_file, 'r').readlines():
             if(line[0] != '{'):
                 #not a json line
                 continue
             jsons = json.loads(line)
-            # parse time
-            dt = parse(jsons['t'])
-            unix_time = int(time.mktime(dt.timetuple()))
-            if init_time is None:
-                init_time = unix_time
-                unix_time = 0
-            else:
-                unix_time -= init_time
             
-            timestamp = unix_time
-            min_time = None
-            if len(heap) > 0:
-                tupl = heap[0]
-                min_time = tupl[0]
-            if(min_time is not None and min_time <= timestamp):
-                min_time, node = heapq.heappop(heap)
-                table_size[node] = table_size[node] - 1
-                if min_time not in table_size_ot.keys():
-                    table_size_ot[min_time] = []
-                table_size_ot[min_time].append({'node':node, 'size':table_size[node]})
-                print('Removing registration by node: ', node, 'at time:', min_time)
-
             if('adlifetime' not in jsons):
                continue
             in_out_s = jsons['msg'].split(' ')[0]
@@ -67,41 +46,81 @@ def get_storage_df(log_path):
             if(in_out_s != '>>'):
                 continue
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
-            peer = int(jsons['addr'].split(':')[1]) - 30200
+            registrar = int(jsons['addr'].split(':')[1]) - 30200
 
-            if(peer == node):
+            if(registrar == advertiser):
                 print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
-            #topic = jsons['topic']
+            # parse time
+            dt = parse(jsons['t'])
+            unix_time = int(time.mktime(dt.timetuple()))
+
+            heapq.heappush(reg_events_heap, (unix_time, registrar, adlifetime, advertiser))
+
+
+    table_size = {}
+    table_size_ot = {} # table size over time 
+    init_time = None
+    # Read the registration events in order
+    while len(reg_events_heap) > 0:
+        timestamp, registrar, adlifetime, advertiser = heapq.heappop(reg_events_heap)
+        
+        # the first event will have timestamp of 0
+        if init_time is None:
+            init_time = timestamp
+            timestamp = 0
+        else:
+            timestamp -= init_time
             
-            if node not in table_size.keys():
-                table_size[node] = 1
+        #print("Registration event at Registrar: ", registrar, "at time:", timestamp, "by advertiser:", advertiser)
+
+        while len(ad_expiry_heap) > 0:
+            tupl = ad_expiry_heap[0]
+            expiry_time = tupl[0]
+
+            if(expiry_time is not None and expiry_time <= timestamp):
+                expiry_time, node = heapq.heappop(ad_expiry_heap)
+                table_size[node] = table_size[node] - 1
+                if expiry_time not in table_size_ot.keys():
+                    table_size_ot[expiry_time] = {}
+
+                table_size_ot[expiry_time][node] = table_size[node]
+                #print('Ad expiration  at registrar: ', node, 'at time:', expiry_time, 'setting table size to', table_size[node])
             else:
-                table_size[node] = table_size[node] + 1
-            if timestamp not in table_size_ot.keys():
-                table_size_ot[timestamp] = []
-            table_size_ot[timestamp].append({'node': node, 'size':table_size[node]})
-            print('Timestamp:', timestamp, 'node:', node, 'size:', table_size[node], 'adlifetime:', adlifetime)
-            heapq.heappush(heap, (timestamp + adlifetime, node))
+                break
+
+        if registrar not in table_size.keys():
+            table_size[registrar] = 1
+        else:
+            table_size[registrar] = table_size[registrar] + 1
+
+        if timestamp not in table_size_ot.keys():
+            table_size_ot[timestamp] = {}
+        table_size_ot[timestamp][registrar] = table_size[registrar]
+        #print('Timestamp:', timestamp, 'registrar:', registrar, 'size:', table_size[registrar], 'adlifetime:', adlifetime)
+        heapq.heappush(ad_expiry_heap, (timestamp + adlifetime, registrar))
 
     rows = []
     times = list(table_size_ot.keys())
     times = sorted(times)
-    print('table_size: ', table_size)
+    #print('table_size_ot: ', table_size_ot)
     table_size = {}
     for node in list(nodes):
         table_size[node] = 0
+    #print('nodes:', list(nodes))
         
     for timestamp in times:
+        #print ('Timestamp:', timestamp)
         row = {}
-        vals = table_size_ot[timestamp]
-        for val in vals:
-            table_size[val['node']] = val['size']
+        reg_events = table_size_ot[timestamp]
+        for registrar in reg_events.keys():
+            table_size[registrar] = reg_events[registrar]
+            #print('setting registar', registrar, 'table size to', reg_events[registrar])
         for node in list(nodes):
             row['timestamp'] = timestamp
             row['node' + str(node)] = table_size[node]
+            #print('Setting row node', str(node), 'to', table_size[node])
             
         rows.append(row)
-
     storage_df = pd.DataFrame(rows)
 
     return storage_df
