@@ -298,7 +298,7 @@ func TestUDPv5_regtopicHandling(t *testing.T) {
 	confirmations := packetsOfType[*v5wire.Regconfirmation](resp)
 	nresp := packetsOfType[*v5wire.Nodes](resp)
 
-	checkResponseCountField(t, resp, 2)
+	checkResponseCountField(t, resp, 3)
 	checkResponseNodes(t, nresp, neighborNodes)
 
 	if len(confirmations) == 0 {
@@ -385,14 +385,14 @@ func TestUDPv5_findnodeCall(t *testing.T) {
 			t.Fatalf("wrong distances in request: %v", p.Distances)
 		}
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 2,
-			Nodes:         nodesToRecords(nodes[:4]),
+			ReqID:     p.ReqID,
+			RespCount: 2,
+			Nodes:     nodesToRecords(nodes[:4]),
 		})
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 2,
-			Nodes:         nodesToRecords(nodes[4:]),
+			ReqID:     p.ReqID,
+			RespCount: 2,
+			Nodes:     nodesToRecords(nodes[4:]),
 		})
 	})
 
@@ -435,24 +435,24 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 			t.Fatalf("wrong topic in request: %v", p.Topic)
 		}
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 4,
-			Nodes:         nodesToRecords(auxNodes[:4]),
+			ReqID:     p.ReqID,
+			RespCount: 4,
+			Nodes:     nodesToRecords(auxNodes[:4]),
 		})
 		test.packetIn(&v5wire.TopicNodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 4,
-			Nodes:         nodesToRecords(resultNodes[:4]),
+			ReqID:     p.ReqID,
+			RespCount: 4,
+			Nodes:     nodesToRecords(resultNodes[:4]),
 		})
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 4,
-			Nodes:         nodesToRecords(auxNodes[4:]),
+			ReqID:     p.ReqID,
+			RespCount: 4,
+			Nodes:     nodesToRecords(auxNodes[4:]),
 		})
 		test.packetIn(&v5wire.TopicNodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 4,
-			Nodes:         nodesToRecords(resultNodes[4:]),
+			ReqID:     p.ReqID,
+			RespCount: 4,
+			Nodes:     nodesToRecords(resultNodes[4:]),
 		})
 	})
 
@@ -553,16 +553,16 @@ func TestUDPv5_callTimeoutReset(t *testing.T) {
 	test.requirePacketOut(func(p *v5wire.Findnode, addr *net.UDPAddr, _ v5wire.Nonce) {
 		time.Sleep(respTimeout - 50*time.Millisecond)
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 2,
-			Nodes:         nodesToRecords(nodes[:4]),
+			ReqID:     p.ReqID,
+			RespCount: 2,
+			Nodes:     nodesToRecords(nodes[:4]),
 		})
 
 		time.Sleep(respTimeout - 50*time.Millisecond)
 		test.packetIn(&v5wire.Nodes{
-			ReqID:         p.ReqID,
-			ResponseCount: 2,
-			Nodes:         nodesToRecords(nodes[4:]),
+			ReqID:     p.ReqID,
+			RespCount: 2,
+			Nodes:     nodesToRecords(nodes[4:]),
 		})
 	})
 	if err := <-done; err != nil {
@@ -800,11 +800,11 @@ func checkResponseCountField[T v5wire.Packet](t *testing.T, msgs []T, wantCount 
 		}
 		switch msg := any(msg).(type) {
 		case *v5wire.Nodes:
-			check(msg.ResponseCount)
+			check(msg.RespCount)
 		case *v5wire.TopicNodes:
-			check(msg.ResponseCount)
+			check(msg.RespCount)
 		case *v5wire.Regconfirmation:
-			check(msg.ResponseCount)
+			check(msg.RespCount)
 		default:
 		}
 	}

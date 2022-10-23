@@ -103,11 +103,11 @@ type (
 		OpID uint64 `rlp:"-"`
 	}
 
-	// NODES is the reply to FINDNODE and TOPICQUERY.
+	// NODES is a response to FINDNODE, REGTOPIC or TOPICQUERY.
 	Nodes struct {
-		ReqID         []byte
-		ResponseCount uint8
-		Nodes         []*enr.Record
+		ReqID     []byte
+		RespCount uint8 // total number of responses to the request
+		Nodes     []*enr.Record
 	}
 
 	// TALKREQ is an application-level request.
@@ -135,12 +135,12 @@ type (
 		OpID uint64 `rlp:"-"`
 	}
 
-	// REGCONFIRMATION is the reply to REGTOPIC.
+	// REGCONFIRMATION is one of the responses to REGTOPIC.
 	Regconfirmation struct {
-		ReqID         []byte
-		ResponseCount uint8  // number of additional NODES responses
-		Ticket        []byte // registered successfully if length zero
-		WaitTime      uint   // how to wait until sending next REGTOPIC (in ms)
+		ReqID     []byte
+		RespCount uint8  // total number of responses to the request
+		Ticket    []byte // registered successfully if length zero
+		WaitTime  uint   // how to wait until sending next REGTOPIC (in ms)
 		// Note: when len(Ticket) == 0, registration is successful and
 		// WaitTime is the registration lifetime.
 
@@ -159,9 +159,9 @@ type (
 
 	// TOPICNODES is one of the responses to TOPICQUERY.
 	TopicNodes struct {
-		ReqID         []byte
-		ResponseCount uint8
-		Nodes         []*enr.Record
+		ReqID     []byte
+		RespCount uint8         // total number of responses to the request
+		Nodes     []*enr.Record // nodes matching the requested topic
 	}
 )
 
@@ -258,7 +258,7 @@ func (p *Nodes) SetRequestID(id []byte) { p.ReqID = id }
 func (p *Nodes) AppendLogInfo(ctx []interface{}) []interface{} {
 	return append(ctx,
 		"req", hexutil.Bytes(p.ReqID),
-		"tot", p.ResponseCount,
+		"tot", p.RespCount,
 		"n", len(p.Nodes),
 	)
 }
@@ -334,7 +334,7 @@ func (p *TopicNodes) SetRequestID(id []byte) { p.ReqID = id }
 func (p *TopicNodes) AppendLogInfo(ctx []interface{}) []interface{} {
 	return append(ctx,
 		"req", hexutil.Bytes(p.ReqID),
-		"tot", p.ResponseCount,
+		"tot", p.RespCount,
 		"n", len(p.Nodes),
 	)
 }

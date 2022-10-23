@@ -147,15 +147,15 @@ func (np *nodesProc) verify(src *enode.Node, r *enr.Record) (*enode.Node, error)
 
 func packFindnodeResponse(reqID []byte, nodes []*enode.Node) []*v5wire.Nodes {
 	if len(nodes) == 0 {
-		return []*v5wire.Nodes{{ReqID: reqID, ResponseCount: 1}}
+		return []*v5wire.Nodes{{ReqID: reqID, RespCount: 1}}
 	}
 	packs := packNodes(nodes)
 	var resps []*v5wire.Nodes
 	for _, recs := range packs {
 		resps = append(resps, &v5wire.Nodes{
-			ReqID:         reqID,
-			ResponseCount: uint8(len(packs)),
-			Nodes:         recs,
+			ReqID:     reqID,
+			RespCount: uint8(len(packs)),
+			Nodes:     recs,
 		})
 	}
 	return resps
