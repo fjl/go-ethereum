@@ -170,30 +170,32 @@ class NetworkDocker(Network):
         return ip
 
 
-def start_nodes(network: Network, config_path, params):
+def random_bootnodes(network: Network, config_path: str, net_size: int):
+    first_node = network.node_enr(config_path, 1)
+    bnlist = [ first_node ]
+    for node in random.sample(range(2, net_size+1), min(net_size//3, 20)):
+        bnlist.append(network.node_enr(config_path, node))
+    return bnlist
+
+def start_nodes(network: Network, config_path: str, params: dict):
     n = params['nodes']
     udpBasePort = params['udpBasePort']
     rpcBasePort = params['rpcBasePort']
 
-    print("Starting all nodes..")
+    print("Experiment parameters:", params)
+    print("Starting", n, "nodes...")
 
     if isinstance(network, NetworkDocker):
         network.create_docker_networks(n)
         os.system("sudo iptables --flush DOCKER-ISOLATION-STAGE-1")
-
-    # construct bootstrap node list
-    first_node = network.node_enr(config_path, 1)
-    bootnodes_list = [ first_node ]
-    for node in random.sample(range(2, n+1), min(n//3, 20)):
-        bootnodes_list.append(network.node_enr(config_path, node))
-    print("Using", len(bootnodes_list), "bootstrap nodes")
 
     for i in range(1,n+1):
         #print("starting node "+str(i))
         keyfile = os.path.join(config_path, "keys", "node-"+str(i)+".key")
         with open(keyfile, "r") as f:
             nodekey = f.read()
-        network.start_node(i, bootnodes=bootnodes_list, nodekey=nodekey, config_path=config_path)
+        bn = random_bootnodes(network, config_path, n)
+        network.start_node(i, bootnodes=bn, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
 
