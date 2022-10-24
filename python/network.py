@@ -5,7 +5,17 @@ import random
 import subprocess
 import time
 
-run_param={'adCacheSize','adLifetimeSeconds','regBucketSize','searchBucketSize'}
+
+# This is the list of config parameters supported by cmd/devp2p.
+run_param = {
+    'adCacheSize',
+    'adLifetimeSeconds',
+    'regBucketSize',
+    'regBucketStandbySize',
+    'searchBucketSize',
+    'bucketRefreshInterval',
+    'rpcSearchTimeoutSeconds',
+}
 
 
 network_config_defaults = {
@@ -204,7 +214,6 @@ def random_bootnodes(network: Network, config_path: str, net_size: int):
 def start_nodes(network: Network, config_path: str, params: dict):
     n = params['nodes']
 
-    print("Experiment parameters:", params)
     print("Starting", n, "nodes...")
 
     if isinstance(network, NetworkDocker):
@@ -223,7 +232,7 @@ def start_nodes(network: Network, config_path: str, params: dict):
 
 # make_keys creates all node keys.
 def make_keys(config_path, n):
-    print("building keys...")
+    print("Building keys...")
     result = os.makedirs(config_path+"keys/",exist_ok=True)
 
     for i in range(1,n+1):
@@ -240,15 +249,18 @@ def filter_params(params):
     return result
 
 def write_experiment(config_path, params):
-    print("writing experiments params..")
     if os.path.exists(config_path+"logs/"):
+        print("Removing old logs...")
         for filename in os.listdir(config_path+"logs/"):
             result = os.remove(config_path+"logs/"+filename)
     else:
         result = os.mkdir(config_path+"logs/")
 
+    node_config = filter_params(params)
+    print("Experiment parameters:", params)
+    # print("Node config:", node_config)
     with open(config_path+'config.json', 'w') as f:
-        f.write(json.dumps(filter_params(params)))
+        f.write(json.dumps(node_config))
     with open(config_path+'experiment.json', 'w') as f:
         f.write(json.dumps(params))
 
