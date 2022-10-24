@@ -79,7 +79,7 @@ def main(docker) -> int:
                 workload.run_workload(network, params, out_dir)
                 print("Workload done.")
                 network.stop()
-                analysis.analyze(out_dir, params)
+                analysis.analyze(out_dir)
 
 
 if __name__ == '__main__':
