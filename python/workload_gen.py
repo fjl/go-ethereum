@@ -209,31 +209,52 @@ class TruncatedZipfDist(DiscreteDist):
 
 
 # waits for all nodes to have a sufficient number of neighbors in the routing table
-def wait_for_nodes_ready(config, count):
+def wait_for_nodes_ready(config, get_neighbor_count_fn):
     min_neighbors = min(config['nodes']-1, 10)
     nodes = list(range(1, config['nodes'] + 1))
+
     global MAX_REQUEST_THREADS
     with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-        while len(nodes) > 0:
-            print('waiting for {} nodes to become ready'.format(len(nodes)))
+        while True:
             # submit check requests
             proc = []
             for node in nodes:
-                p = executor.submit(count, node, config)
+                p = executor.submit(get_neighbor_count_fn, node, config)
                 proc.append((node, p))
             # check results
+            notup = 0
+            bootstrapped = 0
+            stats = {}
             for (node, p) in proc:
                 try:
                     count = p.result()
                 except requests.RequestException as e:
-                    print('node {} is not up yet'.format(node))
+                    notup += 1
                 else:
-                    #print(count)
+                    if count in stats:
+                        stats[count] += 1
+                    else:
+                        stats[count] = 1
                     if count >= min_neighbors:
-                        nodes.remove(node)
+                        bootstrapped += 1
+
+            if bootstrapped == len(nodes):
+                return
+
+            if notup > 0:
+                print('{} nodes are not up yet'.format(notup))
+            else:
+                sstats = {'ok': 0}
+                for k in sorted(stats, reverse=True):
+                    if k > min_neighbors:
+                        sstats['ok'] += stats[k]
+                    else:
+                        sstats[k] = stats[k]
+                print('waiting for {} nodes to become ready.'.format(len(nodes)))
+                print('stats: {}'.format(sstats))
+
             # wait for a bit before retrying
             time.sleep(1)
-
 
 # checks if the routing table of a node is sufficiently filled
 def node_neighbor_count(node, config):
@@ -245,6 +266,7 @@ def node_neighbor_count_docker(node,config):
     payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
     resp = requests.post(node_api_url_docker(node, config), json=payload).json()
     return len(resp['result'])
+
 
 # perform topic registrations
 def register_topics(zipf, config, docker):
@@ -284,7 +306,7 @@ def search_topics(zipf, config, node_to_topic,docker):
     nodes = list(range(1, config['nodes'] + 1))
     node = random.choice(nodes)
     nodes = list(range(1, config['nodes'] + 1))
-          
+
     time_now = float(time.time())
 
     request_rate = config['nodes'] / config['adLifetimeSeconds']
@@ -311,6 +333,7 @@ def search_topics(zipf, config, node_to_topic,docker):
                 else:
                     PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
                 time_next = time_now + random.expovariate(request_rate)
+
 
 def send_lookup(node, topic, config, op_id):
     global LOGS
@@ -353,6 +376,7 @@ def send_lookup_docker(node, topic, config, op_id):
     resp["time"] = get_current_time_msec()
     print('Search response: ', resp)
     LOGS.put(resp)
+
 
 def node_api_url(node, config):
     port = config['rpcBasePort'] + node
