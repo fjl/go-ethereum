@@ -75,10 +75,8 @@ def main(docker) -> int:
                 atexit.register(network.stop)
 
                 run_testbed(network, out_dir, params)
-                config = workload.read_config(out_dir)
-                workload.wait_for_nodes_ready(network, config)
 
-                workload.run_workload(network, config, out_dir, params)
+                workload.run_workload(network, params, out_dir)
                 print("Workload done.")
                 network.stop()
                 analysis.analyze(out_dir, params)

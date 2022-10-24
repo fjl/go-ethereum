@@ -334,7 +334,7 @@ def read_config(dir):
     return config
 
 
-def run_workload(network: Network, config, out_dir, params):
+def run_workload(network: Network, params, out_dir):
     wait_for_nodes_ready(network, params)
 
     print("Starting registrations...")
