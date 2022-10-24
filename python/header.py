@@ -1,5 +1,6 @@
 features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 50, 'vals':[50]},
              'topic': {'type': 'benign', 'default': 1, 'defaultAttack': 1,'vals':[1]},
+             'bucketRefreshInterval': {'type': 'benign', 'default': 60, 'defaultAttack': 60, 'vals':[60]},
              'regBucketSize': {'type': 'benign', 'default': 10, 'defaultAttack': 10, 'vals':[10]},
              'searchBucketSize': {'type': 'benign', 'default': 3, 'defaultAttack': 3, 'vals':[3]},
              'adLifetimeSeconds': {'type': 'benign', 'default': 60, 'defaultAttack': 60, 'vals':[60]},
