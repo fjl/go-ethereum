@@ -41,11 +41,14 @@ def get_storage_df(log_path):
             
             if('adlifetime' not in jsons):
                continue
-            in_out_s = jsons['msg'].split(' ')[0]
             msg_type = jsons['msg'].split(' ')[1]
             if msg_type != 'REGCONFIRMATION/v5':
                 continue 
+            in_out_s = jsons['msg'].split(' ')[0]
             if(in_out_s != '>>'):
+                continue
+            ok = jsons['ok']
+            if (ok != 'true'):
                 continue
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
             registrar = int(jsons['addr'].split(':')[1]) - 30200
@@ -465,7 +468,7 @@ def analyze(out_dir):
 
 
 def main():
-    directory = "discv5-test"
+    directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
     analyze(directory)
