@@ -1,5 +1,7 @@
 import json
 import os
+import os.path
+import sys
 from dateutil.parser import parse
 import pandas as pd
 import hashlib
@@ -418,3 +420,51 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
 
 #print(df['msg_type'].value_counts())
 #print(df['in_out'].value_counts())
+
+
+
+def analyze(out_dir):
+    logs_dir = os.path.join(out_dir, 'logs')
+    fig_dir = os.path.join(out_dir, 'figs')
+
+    if not os.path.exists(fig_dir):
+        os.mkdir(fig_dir)
+
+    op_df = get_op_df(logs_dir)
+
+    msg_df = get_msg_df(logs_dir, op_df)
+    msg_df = msg_df.dropna(subset=['opid'])
+
+    plot_operation_returned(fig_dir,op_df)
+
+    plot_operation_times(fig_dir,op_df)
+
+    plot_msg_operation(fig_dir, msg_df)
+
+    plot_msg_sent_recv(fig_dir,msg_df)
+
+    plot_msg_sent_recv2(fig_dir,msg_df)
+
+    plot_msg_sent_distrib(fig_dir,msg_df)
+
+    plot_msg_topic(fig_dir,msg_df)
+
+    plot_times_discovered(fig_dir,op_df)
+
+    plot_search_results(fig_dir,op_df)
+
+    plot_waiting_time(fig_dir,msg_df)
+
+    storage_df = get_storage_df(logs_dir)
+    #print('Storage_df:', storage_df)
+    plot_storage_per_node_over_time(fig_dir, storage_df)
+
+
+def main():
+    directory = "discv5-test"
+    if len(sys.argv) > 1:
+        directory = sys.argv[1]
+    analyze(directory)
+
+if __name__ == "__main__":
+    main()
