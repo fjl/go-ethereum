@@ -41,8 +41,7 @@ class NetworkLocal(Network):
         url = 'http://127.0.0.1:' + str(port)
         return url
 
-    def start_node(self, n: int, bootnodes=[], log=None, nodekey=None, config_path=None):
-        assert log is not None
+    def start_node(self, n: int, bootnodes=[], nodekey=None, config_path=None):
         assert nodekey is not None
         assert config_path is not None
 
@@ -57,13 +56,17 @@ class NetworkLocal(Network):
         ]
         logflags = ["--verbosity", "5", "--log.json"]
         argv = ["./devp2p", *logflags, "discv5", "listen", *nodeflags]
+
+        logfile = os.path.join(config_path, "logs", "node-"+str(n)+".log")
+        log = open(logfile, 'a')
+
         p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
         self.proc.append(p)
 
 
 class NetworkDocker(Network):
     config = None
-    proc = []
+    containers = []
 
     def __init__(self, config=None):
         self.config = config
@@ -79,6 +82,13 @@ class NetworkDocker(Network):
         # result = os.system("docker build --tag devp2p -f Dockerfile.topdisc .")
         # assert(result == 0)
 
+    def stop(self):
+        super().stop()
+
+        print("Stopping docker containers")
+        for container_id in self.containers:
+            os.system('docker kill ' + container_id)
+
     # get_node_url returns the ENR of node n.
     def node_enr(self, path, n):
         ip = self._node_ip(n)
@@ -92,8 +102,7 @@ class NetworkDocker(Network):
         ip = self._node_ip(n)
         return "http://" + ip + ":" + str(port)
 
-    def start_node(self, n: int, bootnodes=[], log=None, nodekey=None, config_path=None):
-        assert log is not None
+    def start_node(self, n: int, bootnodes=[], nodekey=None, config_path=None):
         assert nodekey is not None
         assert config_path is not None
 
@@ -107,20 +116,27 @@ class NetworkDocker(Network):
             "--rpc", self._node_ip(n)+':'+str(rpc),
             "--config", "/go-ethereum/discv5-test/config.json",
         ]
-        logflags = ["--verbosity", "5", "--log.json"]
+        logfile = "/go-ethereum/discv5-test/logs/node-"+str(n)+".log"
+        logflags = ["--verbosity", "5", "--log.json", "--log.file", logfile]
         node_args = [*logflags, "discv5", "listen", *nodeflags]
 
         # start the docker container
         argv = [
-            "docker", "run", "-i",
+            "docker", "run", "-d",
             "--name", "node"+str(n),
             "--network", self._node_network_name(n),
             "--cap-add", "NET_ADMIN",
             "--mount", "type=bind,source="+config_path+",target=/go-ethereum/discv5-test",
             "devp2p", *node_args,
         ]
-        p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
-        self.proc.append(p)
+        p = subprocess.run(argv, capture_output=True, text=True)
+        if p.returncode != 0:
+            print(p.stderr)
+            p.check_returncode()
+
+        container_id = p.stdout.split('\n')[0]
+        print('started node', n, 'container:', container_id)
+        self.containers.append(container_id)
 
     def create_docker_networks(self, nodes):
         for node in range(1,nodes+1):
@@ -175,11 +191,8 @@ def start_nodes(network: Network, config_path, params):
     for i in range(1,n+1):
         #print("starting node "+str(i))
         keyfile=config_path+"keys/node-"+str(i)+".key"
-        logfile=config_path+"logs/node-"+str(i)+".log"
-
         nodekey=open(keyfile,"r").read()
-        log = open(logfile, 'a')
-        network.start_node(i, bootnodes=bootnodes_list, log=log, nodekey=nodekey, config_path=config_path)
+        network.start_node(i, bootnodes=bootnodes_list, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
 
