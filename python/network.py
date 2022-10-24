@@ -184,14 +184,13 @@ def start_nodes(network: Network, config_path, params):
     bootnodes_list = [ first_node ]
     for node in random.sample(range(2, n+1), min(n//3, 20)):
         bootnodes_list.append(network.node_enr(config_path, node))
-
-    bootnode_arg = ','.join(bootnodes_list)
     print("Using", len(bootnodes_list), "bootstrap nodes")
 
     for i in range(1,n+1):
         #print("starting node "+str(i))
-        keyfile=config_path+"keys/node-"+str(i)+".key"
-        nodekey=open(keyfile,"r").read()
+        keyfile = os.path.join(config_path, "keys", "node-"+str(i)+".key")
+        with open(keyfile, "r") as f:
+            nodekey = f.read()
         network.start_node(i, bootnodes=bootnodes_list, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
