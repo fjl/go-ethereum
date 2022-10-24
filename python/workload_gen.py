@@ -319,7 +319,8 @@ def send_lookup(network: Network, node: int, topic, config, op_id):
     resp = requests.post(network.node_api_url(node), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    print('Search response: ', resp)
+    #print('Search response: ', resp)
+    print('Search response: Found {} nodes', len(resp["result"]))
     LOGS.put(resp)
 
 

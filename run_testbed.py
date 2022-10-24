@@ -79,6 +79,7 @@ def main(docker) -> int:
                 workload.run_workload(network, params, out_dir)
                 print("Workload done.")
                 network.stop()
+                atexit.unregister(network.stop)
                 analysis.analyze(out_dir)
 
 

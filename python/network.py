@@ -72,16 +72,18 @@ class NetworkDocker(Network):
     def __init__(self, config=None):
         self.config = config
 
+
+
     def build(self):
         super().build()
 
         # remove stuff from previous runs
-        os.system('docker network prune -f')
-        os.system('docker container prune -f')
+        #os.system('docker network prune -f')
+        #os.system('docker container prune -f')
 
         # print("Building docker container")
-        # result = os.system("docker build --tag devp2p -f Dockerfile.topdisc .")
-        # assert(result == 0)
+        #result = os.system("docker build --tag devp2p -f Dockerfile.topdisc .")
+        #assert(result == 0)
 
     def stop(self):
         super().stop()
@@ -89,6 +91,11 @@ class NetworkDocker(Network):
         print("Stopping docker containers")
         for container_id in self.containers:
             os.system('docker kill ' + container_id)
+
+        for container_id in self.containers:
+            os.system('docker rm ' + container_id)
+
+        self.rm_docker_networks(self.config['nodes'])
         self.containers = []
 
     # get_node_url returns the ENR of node n.
@@ -148,6 +155,11 @@ class NetworkDocker(Network):
             gateway = prefix+'.1'
             os.system('docker network create ' + network + ' -d bridge --subnet=' + subnet + ' --gateway=' + gateway)
 
+    def rm_docker_networks(self, nodes):
+        for node in range(1,nodes+1):
+            network = self._node_network_name(node)
+            os.system('docker network rm ' + network)
+
     def _node_network_name(self, node):
         return 'node' + str(node) + '-network'
 
@@ -170,30 +182,32 @@ class NetworkDocker(Network):
         return ip
 
 
-def start_nodes(network: Network, config_path, params):
+def random_bootnodes(network: Network, config_path: str, net_size: int):
+    first_node = network.node_enr(config_path, 1)
+    bnlist = [ first_node ]
+    for node in random.sample(range(2, net_size+1), min(net_size//3, 20)):
+        bnlist.append(network.node_enr(config_path, node))
+    return bnlist
+
+def start_nodes(network: Network, config_path: str, params: dict):
     n = params['nodes']
     udpBasePort = params['udpBasePort']
     rpcBasePort = params['rpcBasePort']
 
-    print("Starting all nodes..")
+    print("Experiment parameters:", params)
+    print("Starting", n, "nodes...")
 
     if isinstance(network, NetworkDocker):
         network.create_docker_networks(n)
         os.system("sudo iptables --flush DOCKER-ISOLATION-STAGE-1")
-
-    # construct bootstrap node list
-    first_node = network.node_enr(config_path, 1)
-    bootnodes_list = [ first_node ]
-    for node in random.sample(range(2, n+1), min(n//3, 20)):
-        bootnodes_list.append(network.node_enr(config_path, node))
-    print("Using", len(bootnodes_list), "bootstrap nodes")
 
     for i in range(1,n+1):
         #print("starting node "+str(i))
         keyfile = os.path.join(config_path, "keys", "node-"+str(i)+".key")
         with open(keyfile, "r") as f:
             nodekey = f.read()
-        network.start_node(i, bootnodes=bootnodes_list, nodekey=nodekey, config_path=config_path)
+        bn = random_bootnodes(network, config_path, n)
+        network.start_node(i, bootnodes=bn, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
 
@@ -234,3 +248,4 @@ def run_testbed(network: Network, config_path, params):
     write_experiment(config_path, params)
     start_nodes(network, config_path, params)
     time.sleep(10)
+
