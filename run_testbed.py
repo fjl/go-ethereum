@@ -18,12 +18,12 @@ def parseArguments():
 
     # Print version
     parser.add_argument("--docker", help="enable docker testbed", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--analysis", help="enable docker testbed", action=argparse.BooleanOptionalAction)
     parser.add_argument("--config", help="run chosen configuration", type=str)
 
     # Parse arguments
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    return args
 
 # params_to_dir turns a running config into a folder name
 def params_to_dir(params, type):
@@ -32,7 +32,6 @@ def params_to_dir(params, type):
         if param in features and (features[param]['type'] == type):
             result += "_" + param + "-" + str(params[param])
     return result
-
 
 def load_config_file(file):
     with open(file) as f:
@@ -45,7 +44,7 @@ def load_config_file(file):
 
     return config
 
-def run_it(network: Network, params: dict, is_attack=False):
+def run_it(network: Network, params: dict, is_attack=False, analysis=True):
     if(is_attack):
         out_dir = os.getcwd()+result_dir + "/attack/" + params_to_dir(params, type='attack') + "/"
     else:
@@ -57,7 +56,9 @@ def run_it(network: Network, params: dict, is_attack=False):
     workload.run_workload(network, params, out_dir)
     print("Workload done.")
     network.stop()
-    analysis.analyze(out_dir)
+
+    if analysis:
+        analysis.analyze(out_dir)
 
 
 def main(args) -> int:
@@ -72,7 +73,7 @@ def main(args) -> int:
 
     if args.config:
         params = load_config_file(args.config)
-        run_it(network, params)
+        run_it(network, params, analysis=args.analysis)
         return
 
     for main_feature in features.keys():
@@ -98,7 +99,7 @@ def main(args) -> int:
             #pformat turns a dictionary into a string that can be added to the set
             if(pformat(params) not in already_run):
                 already_run.add(pformat(params))
-                run_it(network, params, is_attack=is_attack)
+                run_it(network, params, is_attack=is_attack, analysis=args.analysis)
 
 
 if __name__ == '__main__':
