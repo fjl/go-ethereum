@@ -30,11 +30,7 @@ import (
 
 // wait time computation constants.
 const (
-	ipModifierExp    = 0.4
-	idModifierExp    = 0.4
-	topicModifierExp = 15
-	occupancyExp     = 4
-	baseMultiplier   = 30
+	occupancyExp = 10
 )
 
 // If a node has less than this time to wait, they will be accepted anyway.
@@ -178,13 +174,12 @@ func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 	regCount := tab.all.Len()
 
 	occupancy := 1.0 - (float64(regCount) / float64(tab.config.AdCacheSize))
-	occupancyScore := float64(tab.config.AdLifetime/time.Second) / math.Pow(occupancy, occupancyExp)
+	occupancyScore := tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
 
-	topicMod := math.Pow(float64(tab.topicSize(t))/float64(regCount+1), topicModifierExp)
+	topicMod := float64(tab.topicSize(t)) / float64(regCount+1)
 	ipMod := tab.wt.ipModifier(n)
-	idMod := tab.wt.idModifier(n, regCount)
 
-	neededTime := baseMultiplier * occupancyScore * math.Max(topicMod+ipMod+idMod, 0.000001)
+	neededTime := occupancyScore * math.Max(topicMod+ipMod, 0.000001)
 	return time.Duration(math.Ceil(neededTime * float64(time.Second)))
 }
 
@@ -248,11 +243,6 @@ func (wt *waitTimeState) ipModifier(n *enode.Node) float64 {
 		score6 = wt.ipv6.score(net.IP(ip6))
 	}
 	return math.Max(score4, score6)
-}
-
-func (wt *waitTimeState) idModifier(n *enode.Node, regCount int) float64 {
-	counter := float64(wt.idCounter[n.ID()])
-	return math.Pow(counter/float64(regCount+1), idModifierExp)
 }
 
 func (wt *waitTimeState) addReg(reg *topicTableEntry) {
