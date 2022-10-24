@@ -320,7 +320,7 @@ def send_lookup(network: Network, node: int, topic, config, op_id):
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     #print('Search response: ', resp)
-    print('Search response: Found {} nodes', len(resp["result"]))
+    print('Search response: Found {} nodes'.format(len(resp["result"])))
     LOGS.put(resp)
 
 
