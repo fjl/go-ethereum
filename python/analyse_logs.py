@@ -424,8 +424,8 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
 
 
 def analyze(out_dir):
-    logs_dir = os.path.join(out_dir, 'logs')
-    fig_dir = os.path.join(out_dir, 'figs')
+    logs_dir = os.path.join(out_dir, 'logs') + "/"
+    fig_dir = os.path.join(out_dir, 'figs') + "/"
 
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
