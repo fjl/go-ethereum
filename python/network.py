@@ -76,6 +76,7 @@ class NetworkLocal(Network):
         logfile = os.path.join(config_path, "logs", "node-"+str(n)+".log")
         log = open(logfile, 'a')
 
+        print("Starting node", str(n))
         p = subprocess.Popen(argv, stdout=log, stderr=log)
         self.proc.append(p)
 
@@ -221,7 +222,6 @@ def start_nodes(network: Network, config_path: str, params: dict):
         os.system("sudo iptables --flush DOCKER-ISOLATION-STAGE-1")
 
     for i in range(1,n+1):
-        #print("starting node "+str(i))
         keyfile = os.path.join(config_path, "keys", "node-"+str(i)+".key")
         with open(keyfile, "r") as f:
             nodekey = f.read()
