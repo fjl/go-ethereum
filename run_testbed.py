@@ -98,7 +98,7 @@ def main(args) -> int:
             #pformat turns a dictionary into a string that can be added to the set
             if(pformat(params) not in already_run):
                 already_run.add(pformat(params))
-                run_it(network, params, out_dir, is_attack=is_attack)
+                run_it(network, params, is_attack=is_attack)
 
 
 if __name__ == '__main__':
