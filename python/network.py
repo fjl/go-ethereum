@@ -1,14 +1,17 @@
-import os
+import atexit
 import json
-import time
-import subprocess
+import os
 import psutil
+import random
+import subprocess
+import time
 
 
 run_param={'adCacheSize','adLifetimeSeconds','regBucketSize','searchBucketSize'}
 proc = []
+
 # get_node_url returns the enode URL of node $i.
-def get_node_url(path,udpBasePort,n):
+def get_node_url_local(path,udpBasePort,n):
     port = udpBasePort + n
     url = os.popen("./devp2p key to-enr --ip 127.0.0.1 --tcp 0 --udp "+str(port)+" "+path+"keys/node-"+str(n)+".key").read().split('\n')
     return url[0]
@@ -17,6 +20,11 @@ def get_node_url_docker(path,port):
     url = os.popen("./devp2p key to-enr --ip "+get_network(1)+".2 --tcp 0 --udp "+str(port)+" "+path+"keys/node-"+str(1)+".key").read().split('\n')
     return url[0]
 
+def get_node_url(docker, path, port, n):
+    if docker:
+        return get_node_url_docker(path, port)
+    else:
+        return get_node_url_local(path, port, n)
 
 def get_network(node):
     IP1=172
@@ -71,25 +79,27 @@ def write_experiment(config_path,params):
         f.write(json.dumps(filter_params(params)))
     with open(config_path+'experiment.json', 'w') as f:
         f.write(json.dumps(params))
-        
+
 def start_nodes(config_path,params,docker):
-
-    print("Starting all nodes..")
-    if docker:
-        bootnode=get_node_url_docker(config_path,params['udpBasePort'])
-        start_network(params['nodes'])
-        os.system("sudo iptables --flush DOCKER-ISOLATION-STAGE-1")
-    else :
-        bootnode=get_node_url(config_path,params['udpBasePort'],1)
-
-    print("Bootstrap node: "+str(bootnode))
-
     n = params['nodes']
     udpBasePort = params['udpBasePort']
     rpcBasePort = params['rpcBasePort']
 
-    for i in range(1,n+1):
+    print("Starting all nodes..")
 
+    if docker:
+        start_network(n)
+        os.system("sudo iptables --flush DOCKER-ISOLATION-STAGE-1")
+
+    # construct bootstrap node list
+    first_node = get_node_url(docker, config_path, udpBasePort, 1)
+    bootnodes_list = [ first_node ]
+    for node in random.sample(range(2, n+1), max(n//3, 20)):
+        bootnodes_list.append(get_node_url(docker, config_path, udpBasePort, node))
+    bootnode_arg = ','.join(bootnodes_list)
+    print("Using", len(bootnodes_list), "bootstrap nodes")
+
+    for i in range(1,n+1):
         #print("starting node "+str(i))
 
         keyfile=config_path+"keys/node-"+str(i)+".key"
@@ -99,19 +109,20 @@ def start_nodes(config_path,params,docker):
 
         nodekey=open(keyfile,"r").read()
         log = open(logfile, 'a')
-        
+
         if docker:
             logfile="/go-ethereum/discv5-test/logs/node-"+str(i)+".log"
-            nodeflags="--bootnodes "+bootnode+" --nodekey "+nodekey+" --addr "+get_network(i)+".2:"+str(udpBasePort)+" --rpc "+get_network(i)+".2:"+str(rpcBasePort) 
+            nodeflags="--bootnodes "+bootnode_arg+" --nodekey "+nodekey+" --addr "+get_network(i)+".2:"+str(udpBasePort)+" --rpc "+get_network(i)+".2:"+str(rpcBasePort)
             nodeflags+=" --config /go-ethereum/discv5-test/config.json"
             subprocess.Popen("docker run --network node"+str(i)+"-network --cap-add=NET_ADMIN --name node"+str(i)+" --mount type=bind,source="+config_path+",target=/go-ethereum/discv5-test devp2p sh -c './devp2p "+logflags+" discv5 listen "+nodeflags+"'",stdout=log,stderr=log,shell=True, preexec_fn=os.setsid)
             #os.system("docker run --network node"+str(i)+"-network --cap-add=NET_ADMIN --name node"+str(i)+" --mount type=bind,source="+config_path+",target=/go-ethereum/discv5-test devp2p sh -c './devp2p "+logflags+" discv5 listen "+nodeflags+" 2>&1 | tee "+logfile+" ' &")
         else:
             port=udpBasePort+i
             rpc=rpcBasePort+i
-            nodeflags="--bootnodes "+bootnode+" --nodekey "+nodekey+" --addr 127.0.0.1:"+str(port)+" --rpc 127.0.0.1:"+str(rpc) 
+            nodeflags="--bootnodes "+bootnode_arg+" --nodekey "+nodekey+" --addr 127.0.0.1:"+str(port)+" --rpc 127.0.0.1:"+str(rpc)
             nodeflags+=" --config "+config_path+"config.json"
             process = subprocess.Popen(["./devp2p "+logflags+" discv5 listen "+nodeflags],stdout=log,stderr=log,shell=True, preexec_fn=os.setsid)
+            atexit.register(process.kill)
             proc.append(process)
 
     print("Nodes started")
@@ -127,7 +138,7 @@ def stop_docker_nodes(n):
         kill(p.pid)
 
 def run_testbed(config_path,params,docker):
-    
+
     build()
     make_keys(config_path,params['nodes'])
     write_experiment(config_path,params)
