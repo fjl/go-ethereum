@@ -70,14 +70,12 @@ class NetworkLocal(Network):
             "--rpc", "127.0.0.1:"+str(rpc),
             "--config", os.path.join(config_path, "config.json"),
         ]
-        logflags = ["--verbosity", "5", "--log.json"]
+        logfile = os.path.join(config_path, "logs", "node-"+str(n)+".log")
+        logflags = ["--verbosity", "5", "--log.json", "--log.file", logfile]
         argv = ["./devp2p", *logflags, "discv5", "listen", *nodeflags]
 
-        logfile = os.path.join(config_path, "logs", "node-"+str(n)+".log")
-        log = open(logfile, 'a')
-
         print("Starting node", str(n))
-        p = subprocess.Popen(argv, stdout=log, stderr=log)
+        p = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=None)
         self.proc.append(p)
 
     def stop(self):
@@ -205,15 +203,17 @@ class NetworkDocker(Network):
         return ip
 
 
-def random_bootnodes(network: Network, config_path: str, net_size: int):
-    first_node = network.node_enr(config_path, 1)
-    bnlist = [ first_node ]
-    for node in random.sample(range(2, net_size+1), min(net_size//3, 20)):
-        bnlist.append(network.node_enr(config_path, node))
-    return bnlist
+def create_enrs(network: Network, config_path: str, n: int):
+    return [ network.node_enr(config_path, node) for node in range(1, n+1) ]
+
+def select_bootnodes(enrs):
+    return [ enrs[0] ] + random.sample(enrs[1:], min(len(enrs)//3, 20))
 
 def start_nodes(network: Network, config_path: str, params: dict):
     n = params['nodes']
+
+    print("Creating ENRs...")
+    enrs = create_enrs(network, config_path, n)
 
     print("Starting", n, "nodes...")
 
@@ -225,7 +225,7 @@ def start_nodes(network: Network, config_path: str, params: dict):
         keyfile = os.path.join(config_path, "keys", "node-"+str(i)+".key")
         with open(keyfile, "r") as f:
             nodekey = f.read()
-        bn = random_bootnodes(network, config_path, n)
+        bn = select_bootnodes(enrs)
         network.start_node(i, bootnodes=bn, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
