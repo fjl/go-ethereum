@@ -175,6 +175,8 @@ def get_msg_df(log_path, op_df):
 
             if("total-wtime" in jsons):
                 row['total_wtime'] = jsons['total-wtime']
+            if("wtime" in jsons):
+                row['wtime'] = jsons['wtime']
             if("ok" in jsons):
                 row['ok'] = jsons['ok']
 
