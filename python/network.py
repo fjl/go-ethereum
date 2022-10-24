@@ -18,7 +18,8 @@ class Network:
 
     def stop(self):
         for p in self.proc:
-            p.kill()
+            p.terminate()
+            p.wait()
         self.proc = []
 
 
@@ -60,7 +61,7 @@ class NetworkLocal(Network):
         logfile = os.path.join(config_path, "logs", "node-"+str(n)+".log")
         log = open(logfile, 'a')
 
-        p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
+        p = subprocess.Popen(argv, stdout=log, stderr=log)
         self.proc.append(p)
 
 
