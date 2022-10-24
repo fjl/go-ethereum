@@ -459,6 +459,8 @@ def analyze(out_dir):
     #print('Storage_df:', storage_df)
     plot_storage_per_node_over_time(fig_dir, storage_df)
 
+    plt.close()
+
 
 def main():
     directory = "discv5-test"

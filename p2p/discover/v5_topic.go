@@ -17,6 +17,7 @@
 package discover
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 
@@ -145,6 +146,7 @@ func (reg *topicReg) run(sys *topicSystem) {
 		if len(nodes) == 0 {
 			continue // Local table is empty, retry later.
 		}
+		shuffleNodes(nodes)
 		reg.state.AddNodes(nil, nodes)
 
 		// Perform registration.
@@ -152,6 +154,12 @@ func (reg *topicReg) run(sys *topicSystem) {
 			return
 		}
 	}
+}
+
+func shuffleNodes(nodes []*enode.Node) {
+	rand.Shuffle(len(nodes), func(i, j int) {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	})
 }
 
 const regloopMinTime = 2 * time.Second
@@ -335,6 +343,7 @@ func (s *topicSearch) runLoop(sys *topicSystem) {
 		if len(nodes) == 0 {
 			continue // Local table is empty, retry later.
 		}
+		shuffleNodes(nodes)
 		state.AddNodes(nil, nodes)
 
 		if exit := s.run(state); exit {
