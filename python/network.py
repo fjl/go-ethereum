@@ -88,6 +88,7 @@ class NetworkDocker(Network):
         print("Stopping docker containers")
         for container_id in self.containers:
             os.system('docker kill ' + container_id)
+        self.containers = []
 
     # get_node_url returns the ENR of node n.
     def node_enr(self, path, n):
