@@ -11,6 +11,11 @@ run_param={'adCacheSize','adLifetimeSeconds','regBucketSize','searchBucketSize'}
 class Network:
     proc = []
 
+    def build(self):
+        print('Compiling devp2p tool')
+        result = os.system("go build ./cmd/devp2p")
+        assert(result == 0)
+
     def stop(self):
         for p in self.proc:
             p.kill()
@@ -63,17 +68,29 @@ class NetworkDocker(Network):
     def __init__(self, config=None):
         self.config = config
 
+    def build(self):
+        super().build()
+
+        # remove stuff from previous runs
+        os.system('docker network prune -f')
+        os.system('docker container prune -f')
+
+        # print("Building docker container")
+        # result = os.system("docker build --tag devp2p -f Dockerfile.topdisc .")
+        # assert(result == 0)
+
     # get_node_url returns the ENR of node n.
     def node_enr(self, path, n):
-        ip = self._node_ip(node)
-        url = os.popen("./devp2p key to-enr --ip "+(1)+".2 --tcp 0 --udp "+str(port)+" "+path+"keys/node-"+str(1)+".key").read().split('\n')
+        ip = self._node_ip(n)
+        port = self.config['udpBasePort']
+        url = os.popen("./devp2p key to-enr --ip " + ip + " --tcp 0 --udp "+str(port)+" "+path+"keys/node-"+str(1)+".key").read().split('\n')
         return url[0]
 
     # node_api_url returns the RPC URL of node n.
     def node_api_url(self, n):
         port = self.config['rpcBasePort']
-        url = "http://" + self._node_ip_prefix(n) + ".2:" + str(port)
-        return url
+        ip = self._node_ip(n)
+        return "http://" + ip + ":" + str(port)
 
     def start_node(self, n: int, bootnodes=[], log=None, nodekey=None, config_path=None):
         assert log is not None
@@ -83,38 +100,43 @@ class NetworkDocker(Network):
         # create node command line
         port = self.config['udpBasePort']
         rpc = self.config['rpcBasePort']
-        ip = self._node_ip_prefix(n) + '.2'
         nodeflags = [
             "--bootnodes", ','.join(bootnodes),
             "--nodekey", nodekey,
-            "--addr", ip+':'+str(port),
-            "--rpc", ip+':'+str(rpc),
+            "--addr", self._node_ip(n)+':'+str(port),
+            "--rpc", self._node_ip(n)+':'+str(rpc),
             "--config", "/go-ethereum/discv5-test/config.json",
         ]
         logflags = ["--verbosity", "5", "--log.json"]
-        node_cmdline = ' '.join(["./devp2p", *logflags, "discv5", "listen", *nodeflags])
+        node_args = [*logflags, "discv5", "listen", *nodeflags]
 
         # start the docker container
-        d_network = "node"+str(n)+"network"
-        d_name = "node"+str(n)
         argv = [
-            "docker" "run",
-            "--name", d_name,
-            "--network", network,
+            "docker", "run", "-i",
+            "--name", "node"+str(n),
+            "--network", self._node_network_name(n),
             "--cap-add", "NET_ADMIN",
             "--mount", "type=bind,source="+config_path+",target=/go-ethereum/discv5-test",
-            "devp2p",
-            "sh", "-c", d_cmdline,
+            "devp2p", *node_args,
         ]
         p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
         self.proc.append(p)
 
     def create_docker_networks(self, nodes):
         for node in range(1,nodes+1):
+            network = self._node_network_name(node)
             prefix = self._node_ip_prefix(node)
-            os.system('docker network create -d bridge node'+str(node)+'-network --subnet='+prefix+'.0/24 --gateway='+prefix+'.1')
+            subnet = prefix + '.0/24'
+            gateway = prefix+'.1'
+            os.system('docker network create ' + network + ' -d bridge --subnet=' + subnet + ' --gateway=' + gateway)
 
-    def _node_ip_prefix(node):
+    def _node_network_name(self, node):
+        return 'node' + str(node) + '-network'
+
+    def _node_ip(self, node):
+        return self._node_ip_prefix(node) + '.2'
+
+    def _node_ip_prefix(self, node):
         IP1=172
         IP2=20
         IP3=0
@@ -161,11 +183,6 @@ def start_nodes(network: Network, config_path, params):
 
     print("Nodes started")
 
-
-def build():
-    result = os.system("go build ./cmd/devp2p")
-    assert(result == 0)
-
 # make_keys creates all node keys.
 def make_keys(config_path, n):
     print("building keys...")
@@ -198,7 +215,7 @@ def write_experiment(config_path, params):
         f.write(json.dumps(params))
 
 def run_testbed(network: Network, config_path, params):
-    build()
+    network.build()
     make_keys(config_path, params['nodes'])
     write_experiment(config_path, params)
     start_nodes(network, config_path, params)
