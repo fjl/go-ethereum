@@ -1,5 +1,6 @@
 import json
 import os
+import os.path
 import random
 import subprocess
 import time
@@ -35,6 +36,25 @@ class NetworkLocal(Network):
         url = 'http://127.0.0.1:' + str(port)
         return url
 
+    def start_node(self, n: int, bootnodes=[], log=None, nodekey=None, config_path=None):
+        assert log is not None
+        assert nodekey is not None
+        assert config_path is not None
+
+        port = self.config['udpBasePort'] + n
+        rpc = self.config['rpcBasePort'] + n
+        nodeflags = [
+            "--bootnodes", ','.join(bootnodes),
+            "--nodekey", nodekey,
+            "--addr", "127.0.0.1:"+str(port),
+            "--rpc", "127.0.0.1:"+str(rpc),
+            "--config", os.path.join(config_path, "config.json"),
+        ]
+        logflags = ["--verbosity", "5", "--log.json"]
+        argv = ["./devp2p", *logflags, "discv5", "listen", *nodeflags]
+        p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
+        self.proc.append(p)
+
 
 class NetworkDocker(Network):
     config = None
@@ -55,11 +75,46 @@ class NetworkDocker(Network):
         url = "http://" + self._node_ip_prefix(n) + ".2:" + str(port)
         return url
 
-    def stop(self):
-        for p in proc:
-            p.kill()
+    def start_node(self, n: int, bootnodes=[], log=None, nodekey=None, config_path=None):
+        assert log is not None
+        assert nodekey is not None
+        assert config_path is not None
 
-    def _node_subnet(node):
+        # create node command line
+        port = self.config['udpBasePort']
+        rpc = self.config['rpcBasePort']
+        ip = self._node_ip_prefix(n) + '.2'
+        nodeflags = [
+            "--bootnodes", ','.join(bootnodes),
+            "--nodekey", nodekey,
+            "--addr", ip+':'+str(port),
+            "--rpc", ip+':'+str(rpc),
+            "--config", "/go-ethereum/discv5-test/config.json",
+        ]
+        logflags = ["--verbosity", "5", "--log.json"]
+        node_cmdline = ' '.join(["./devp2p", *logflags, "discv5", "listen", *nodeflags])
+
+        # start the docker container
+        d_network = "node"+str(n)+"network"
+        d_name = "node"+str(n)
+        argv = [
+            "docker" "run",
+            "--name", d_name,
+            "--network", network,
+            "--cap-add", "NET_ADMIN",
+            "--mount", "type=bind,source="+config_path+",target=/go-ethereum/discv5-test",
+            "devp2p",
+            "sh", "-c", d_cmdline,
+        ]
+        p = subprocess.Popen(argv, stdout=log, stderr=log, preexec_fn=os.setsid)
+        self.proc.append(p)
+
+    def create_docker_networks(self, nodes):
+        for node in range(1,nodes+1):
+            prefix = self._node_ip_prefix(node)
+            os.system('docker network create -d bridge node'+str(node)+'-network --subnet='+prefix+'.0/24 --gateway='+prefix+'.1')
+
+    def _node_ip_prefix(node):
         IP1=172
         IP2=20
         IP3=0
@@ -73,11 +128,6 @@ class NetworkDocker(Network):
 
         ip=str(IP1)+"."+str(IP2)+"."+str(IP3)
         return ip
-
-    def create_docker_networks(self, nodes):
-        for node in range(1,nodes+1):
-            prefix = self._node_ip_prefix(node)
-            os.system('docker network create -d bridge node'+str(node)+'-network --subnet='+prefix+'.0/24 --gateway='+prefix+'.1')
 
 
 def start_nodes(network: Network, config_path, params):
@@ -102,29 +152,12 @@ def start_nodes(network: Network, config_path, params):
 
     for i in range(1,n+1):
         #print("starting node "+str(i))
-
         keyfile=config_path+"keys/node-"+str(i)+".key"
         logfile=config_path+"logs/node-"+str(i)+".log"
-        logflags="--verbosity 5"
-        logflags+=" --log.json"
 
         nodekey=open(keyfile,"r").read()
         log = open(logfile, 'a')
-
-        if isinstance(network, NetworkDocker):
-            logfile="/go-ethereum/discv5-test/logs/node-"+str(i)+".log"
-            nodeflags="--bootnodes "+bootnode_arg+" --nodekey "+nodekey+" --addr "+get_network(i)+".2:"+str(udpBasePort)+" --rpc "+get_network(i)+".2:"+str(rpcBasePort)
-            nodeflags+=" --config /go-ethereum/discv5-test/config.json"
-            p = subprocess.Popen("docker run --network node"+str(i)+"-network --cap-add=NET_ADMIN --name node"+str(i)+" --mount type=bind,source="+config_path+",target=/go-ethereum/discv5-test devp2p sh -c './devp2p "+logflags+" discv5 listen "+nodeflags+"'",stdout=log,stderr=log,shell=True, preexec_fn=os.setsid)
-            network.proc.append(p)
-            #os.system("docker run --network node"+str(i)+"-network --cap-add=NET_ADMIN --name node"+str(i)+" --mount type=bind,source="+config_path+",target=/go-ethereum/discv5-test devp2p sh -c './devp2p "+logflags+" discv5 listen "+nodeflags+" 2>&1 | tee "+logfile+" ' &")
-        else:
-            port=udpBasePort+i
-            rpc=rpcBasePort+i
-            nodeflags="--bootnodes "+bootnode_arg+" --nodekey "+nodekey+" --addr 127.0.0.1:"+str(port)+" --rpc 127.0.0.1:"+str(rpc)
-            nodeflags+=" --config "+config_path+"config.json"
-            p = subprocess.Popen(["./devp2p "+logflags+" discv5 listen "+nodeflags],stdout=log,stderr=log,shell=True, preexec_fn=os.setsid)
-            network.proc.append(p)
+        network.start_node(i, bootnodes=bootnodes_list, log=log, nodekey=nodekey, config_path=config_path)
 
     print("Nodes started")
 
