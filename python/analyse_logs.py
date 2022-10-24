@@ -166,7 +166,7 @@ def get_msg_df(log_path, op_df):
                 #it's not a message sent between peers
                 continue
             row['timestamp'] = parse(jsons['t'])
-            row['msg_type'] = jsons['msg'].split(' ')[1]
+            row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
             if('req' in jsons):
                 row['req_id'] = jsons['req']
             #print(row)
