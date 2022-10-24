@@ -5,11 +5,22 @@ import random
 import subprocess
 import time
 
-
 run_param={'adCacheSize','adLifetimeSeconds','regBucketSize','searchBucketSize'}
 
+
+network_config_defaults = {
+    'rpcBasePort': 20200,
+    'udpBasePort': 30200,
+}
+
 class Network:
-    proc = []
+    config = {}
+
+    def __init__(self, config=network_config_defaults):
+        assert isinstance(config, dict)
+        assert isinstance(config.get('rpcBasePort'), int)
+        assert isinstance(config.get('udpBasePort'), int)
+        self.config = config
 
     def build(self):
         print('Compiling devp2p tool')
@@ -17,17 +28,11 @@ class Network:
         assert(result == 0)
 
     def stop(self):
-        for p in self.proc:
-            p.terminate()
-            p.wait()
-        self.proc = []
+        pass
 
 
 class NetworkLocal(Network):
-    config = None
-
-    def __init__(self, config=None):
-        self.config = config
+    proc = []
 
     # node_enr returns the ENR of node n.
     def node_enr(self, path, n):
@@ -64,15 +69,16 @@ class NetworkLocal(Network):
         p = subprocess.Popen(argv, stdout=log, stderr=log)
         self.proc.append(p)
 
+    def stop(self):
+        for p in self.proc:
+            p.terminate()
+            p.wait()
+        self.proc = []
+
 
 class NetworkDocker(Network):
-    config = None
     containers = []
-
-    def __init__(self, config=None):
-        self.config = config
-
-
+    networks = []
 
     def build(self):
         super().build()
@@ -91,12 +97,12 @@ class NetworkDocker(Network):
         print("Stopping docker containers")
         for container_id in self.containers:
             os.system('docker kill ' + container_id)
-
-        for container_id in self.containers:
             os.system('docker rm ' + container_id)
-
-        self.rm_docker_networks(self.config['nodes'])
         self.containers = []
+
+        for network_id in self.networks:
+            os.system('docker network rm ' + network_id)
+        self.networks = []
 
     # get_node_url returns the ENR of node n.
     def node_enr(self, path, n):
@@ -153,12 +159,18 @@ class NetworkDocker(Network):
             prefix = self._node_ip_prefix(node)
             subnet = prefix + '.0/24'
             gateway = prefix+'.1'
-            os.system('docker network create ' + network + ' -d bridge --subnet=' + subnet + ' --gateway=' + gateway)
-
-    def rm_docker_networks(self, nodes):
-        for node in range(1,nodes+1):
-            network = self._node_network_name(node)
-            os.system('docker network rm ' + network)
+            argv = [
+                'docker', 'network', 'create', network,
+                '-d', 'bridge',
+                '--subnet=' + subnet,
+                '--gateway=' + gateway,
+            ]
+            p = subprocess.run(argv, capture_output=True, text=True)
+            if p.returncode != 0:
+                print('docker network create failed:')
+                print(p.stderr)
+            else:
+                self.networks.append(p.stdout.split('\n')[0])
 
     def _node_network_name(self, node):
         return 'node' + str(node) + '-network'
@@ -191,8 +203,6 @@ def random_bootnodes(network: Network, config_path: str, net_size: int):
 
 def start_nodes(network: Network, config_path: str, params: dict):
     n = params['nodes']
-    udpBasePort = params['udpBasePort']
-    rpcBasePort = params['rpcBasePort']
 
     print("Experiment parameters:", params)
     print("Starting", n, "nodes...")
@@ -248,4 +258,3 @@ def run_testbed(network: Network, config_path, params):
     write_experiment(config_path, params)
     start_nodes(network, config_path, params)
     time.sleep(10)
-

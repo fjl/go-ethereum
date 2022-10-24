@@ -68,9 +68,9 @@ def main(docker) -> int:
                     out_dir = os.getcwd()+result_dir + "/benign/" + params_to_dir(params, type='benign') + "/"
                 os.system('mkdir -p ' + out_dir)
 
-                network = NetworkLocal(params)
+                network = NetworkLocal()
                 if docker:
-                    network = NetworkDocker(params)
+                    network = NetworkDocker()
 
                 atexit.register(network.stop)
 
