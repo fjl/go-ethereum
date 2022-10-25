@@ -224,7 +224,8 @@ def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict):
 
          rows.append(row)
 
-    node_id = fname.split('-')[1].split('.')[0] #node-10.log
+    fname_base = os.path.basename(fname) # node-10.log
+    node_id = fname_base.split('-')[1].split('.')[0]
     with open(fname, 'r') as f:
         for line in f:
             if line[0] == '{':
