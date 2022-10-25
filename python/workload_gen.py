@@ -280,7 +280,7 @@ def search_topics(network: Network, zipf, config, node_to_topic):
 
     time_now = float(time.time())
 
-    request_rate = config['nodes'] / config['adLifetimeSeconds']
+    request_rate = config['nodes'] / config['lookupTime']
     #print(request_rate)
     time_next = time_now + random.expovariate(request_rate)
 
