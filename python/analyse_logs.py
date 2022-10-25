@@ -164,14 +164,19 @@ def get_msg_df(log_path, op_df):
 
          if('req' in jsons):
              row['req_id'] = jsons['req']
-         if('opid' in jsons):
-             row['opid'] = jsons['opid']
          if('total-wtime' in jsons):
              row['total_wtime'] = jsons['total-wtime']
          if('wtime' in jsons):
              row['wtime'] = jsons['wtime']
          if('ok' in jsons):
              row['ok'] = jsons['ok']
+
+         if('opid' in jsons):
+             op = jsons['opid']
+             row['opid'] = op
+             # add other attributes known about this operation
+             row['topic'] = op_info[op]['topic']
+             row['op_type'] = op_info[op]['op_type']
 
          # we have a key to the message specified
          # currently it can only be the topic
@@ -202,15 +207,12 @@ def get_msg_df(log_path, op_df):
     print('Propagating message op_ids')
     mapping = {} # req_id -> opid
     def process(row):
-        req_id = row['req_id']
         op_id = row.get('opid', numpy.NaN)
-
         if not numpy.isnan(op_id):
-            mapping[req_id] = op_id
-            row['topic'] = op_info[op_id]['topic']
-            row['op_type'] = op_info[op_id]['op_type']
-            return row
+            mapping[row['req_id']] = op_id
+            return # fields already set by process_message
 
+        req_id = row['req_id']
         if req_id in mapping:
             op_id = mapping[req_id]
             row['opid'] = op_id
