@@ -42,7 +42,6 @@ type TopicTable struct {
 	reg map[TopicID]*list.List
 	wt  waitTimeState
 
-	hostID enode.ID
 	config Config
 }
 
@@ -56,12 +55,11 @@ type topicTableEntry struct {
 }
 
 // NewTopicTable creates a TopicTable.
-func NewTopicTable(hostID enode.ID, cfg Config) *TopicTable {
+func NewTopicTable(cfg Config) *TopicTable {
 	return &TopicTable{
 		reg:    make(map[TopicID]*list.List),
 		all:    list.New(),
 		wt:     newWaitTimeState(),
-		hostID: hostID,
 		config: cfg.withDefaults(),
 	}
 }

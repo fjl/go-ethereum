@@ -169,7 +169,7 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		trhandlers:   make(map[string]TalkRequestHandler),
 
 		// topic stuff
-		topicTable:   topicindex.NewTopicTable(ln.ID(), topicConfig),
+		topicTable:   topicindex.NewTopicTable(topicConfig),
 		ticketSealer: topicindex.NewTicketSealer(cfg.Clock),
 
 		// channels into dispatch

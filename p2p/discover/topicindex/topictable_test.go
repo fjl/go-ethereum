@@ -33,7 +33,7 @@ var (
 
 func TestTopicTableWait(t *testing.T) {
 	cfg := testConfig(t)
-	tab := NewTopicTable(enode.ID{}, cfg)
+	tab := NewTopicTable(cfg)
 
 	n := newNode()
 	wt := tab.Register(n, topic1, 0)
@@ -48,7 +48,7 @@ func TestTopicTableWait(t *testing.T) {
 
 func TestTopicTableRegisterTwice(t *testing.T) {
 	cfg := testConfig(t)
-	tab := NewTopicTable(enode.ID{}, cfg)
+	tab := NewTopicTable(cfg)
 
 	n := newNode()
 	tab.Add(n, topic1)
