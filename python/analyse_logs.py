@@ -144,85 +144,86 @@ def get_msg_df(log_path, op_df):
         op_info[opid] = {'op_type':op_type, 'topic':topic}
 
     rows = []
+    def process_message(node_id, jsons):
+         msg = jsons['msg']
+         if msg.startswith('>> '):
+             direction = 'out'
+         elif msg.startswith('<< '):
+             direction = 'in'
+         else:
+             return # it's not a message sent between peers
+
+         row = {
+             'node_id': node_id,
+             'in_out': direction,
+             # get peer ID from the port number
+             'peer_id': int(jsons['addr'].split(':')[1]) - 30200,
+             'timestamp': parse(jsons['t']),
+             'msg_type': jsons['msg'].split(' ')[1].split(':')[0],
+         }
+
+         if('req' in jsons):
+             row['req_id'] = jsons['req']
+         if('opid' in jsons):
+             row['opid'] = jsons['opid']
+         if('total-wtime' in jsons):
+             row['total_wtime'] = jsons['total-wtime']
+         if('wtime' in jsons):
+             row['wtime'] = jsons['wtime']
+         if('ok' in jsons):
+             row['ok'] = jsons['ok']
+
+         # we have a key to the message specified
+         # currently it can only be the topic
+         if('topic' in jsons):
+             # replace topic digest by topic name
+             topic = jsons['topic']
+             row['key'] = topic_mapping[topic]
+
+         rows.append(row)
+
     for log_file in os.listdir(log_path):
         if (not log_file.startswith("node-")):
             continue
+
         print("Reading", log_file)
         node_id = log_file.split('-')[1].split('.')[0] #node-10.log
-        for line in open(log_path + '/' + log_file, 'r').readlines():
-            #not a json line
-            if(line[0] != '{'):
-                continue
-            row = {}
-            row['node_id'] = node_id
-            #print("\t", line)
-            jsons = json.loads(line)
-            #it's not a message sent between peers
-            if('addr' not in jsons):
-                continue
-            #get peer ID from the port number
-            row['peer_id'] = int(jsons['addr'].split(':')[1]) - 30200
-            in_out_s = jsons['msg'].split(' ')[0]
-            if(in_out_s == '<<'):
-                row['in_out'] = 'in'
-            elif(in_out_s == '>>'):
-                row['in_out'] = 'out'
-            else:
-                #it's not a message sent between peers
-                continue
-            row['timestamp'] = parse(jsons['t'])
-            row['msg_type'] = jsons['msg'].split(' ')[1].split(':')[0]
-            if('req' in jsons):
-                row['req_id'] = jsons['req']
-            #print(row)
-            if('opid' in jsons):
-                row['opid'] = jsons['opid']
+        with open(log_path + '/' + log_file, 'r') as f:
+            for line in f:
+                if line[0] == '{':
+                    jsons = json.loads(line)
+                    if 'addr' in jsons:
+                        process_message(node_id, jsons)
 
-            if("total-wtime" in jsons):
-                row['total_wtime'] = jsons['total-wtime']
-            if("wtime" in jsons):
-                row['wtime'] = jsons['wtime']
-            if("ok" in jsons):
-                row['ok'] = jsons['ok']
-
-            #we have a key to the message specified
-            #currently it can only be the topic
-            if("topic" in jsons):
-                #replace topic digest by topic name
-                topic = jsons['topic']
-                row['key'] = topic_mapping[topic]
-            #print(row)
-            rows.append(row)
-
-
+    print('Constructing the dataframe')
     msg_df = pd.DataFrame(rows)
-    #keep only the send messages (as they have the opid)
-    msg_df = msg_df[msg_df['in_out'] == 'out']
 
-    mapping = {}
+    # associate op_id, topic, op_type with all messages.
+    print('Propagating message op_ids')
+    mapping = {} # req_id -> opid
     def process(row):
-        op_id = row['opid']
         req_id = row['req_id']
+        op_id = row.get('opid', numpy.NaN)
 
-        if(not numpy.isnan(op_id)):
+        if not numpy.isnan(op_id):
             mapping[req_id] = op_id
+            row['topic'] = op_info[op_id]['topic']
+            row['op_type'] = op_info[op_id]['op_type']
+            return row
 
-        if(req_id in mapping):
-            row['tmp'] = mapping[req_id]
-            if(not numpy.isnan(row['tmp'])):
-                row['topic'] = op_info[row['tmp']]['topic']
-                row['op_type'] = op_info[row['tmp']]['op_type']
+        if req_id in mapping:
+            op_id = mapping[req_id]
+            row['opid'] = op_id
+            row['topic'] = op_info[op_id]['topic']
+            row['op_type'] = op_info[op_id]['op_type']
         else:
-            row['tmp'] = numpy.NaN
+            row['opid'] = numpy.NaN
             row['topic'] = numpy.NaN
             row['op_type'] = numpy.NaN
         return row
 
     msg_df = msg_df.apply(lambda row : process(row), axis = 1)
-    msg_df['opid'] = msg_df['tmp']
-    msg_df.drop('tmp', axis=1, inplace=True)
     msg_df = msg_df.dropna(subset=['opid'])
-
     return msg_df
 
 def get_op_df(log_path):
