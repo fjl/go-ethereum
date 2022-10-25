@@ -45,6 +45,7 @@ type Search struct {
 
 	bucketCheck  map[int]struct{}
 	resultBuffer []*enode.Node
+	resultSeen   map[enode.ID]struct{}
 	numResults   int
 
 	queriesWithoutNewNodes int
@@ -66,6 +67,7 @@ func NewSearch(topic TopicID, cfg Config) *Search {
 		cfg:         cfg,
 		log:         cfg.Log.New("topic", topic),
 		topic:       topic,
+		resultSeen:  make(map[enode.ID]struct{}),
 		bucketCheck: make(map[int]struct{}, searchTableDepth),
 	}
 	dist := 256
@@ -180,7 +182,11 @@ func (s *Search) AddQueryResults(from *enode.Node, results []*enode.Node) {
 		s.cfg.Log.Debug("Added topic search result", "topic", s.topic, "fromid", from.ID(), "rid", n.ID())
 		b.numResults++
 		s.numResults++
-		s.resultBuffer = append(s.resultBuffer, n)
+		_, seen := s.resultSeen[n.ID()]
+		if !seen {
+			s.resultSeen[n.ID()] = struct{}{}
+			s.resultBuffer = append(s.resultBuffer, n)
+		}
 	}
 }
 
