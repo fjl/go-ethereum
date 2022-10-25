@@ -18,7 +18,7 @@ import scipy.stats as ss
 import queue
 from python.network import *
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import concurrent.futures as futures
 
 from . network import Network, NetworkLocal
 
@@ -30,8 +30,9 @@ zipf_exponent = 1.0
 NODE_ID = 0
 OP_ID = 100
 LOGS = queue.Queue()
-PROCESSES = []
+
 MAX_REQUEST_THREADS = 128
+EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
 
 def gen_op_id():
     global OP_ID
@@ -173,49 +174,48 @@ class TruncatedZipfDist(DiscreteDist):
 def wait_for_nodes_ready(network: Network, config):
     min_neighbors = min(config['nodes']-1, 10)
     nodes = list(range(1, config['nodes'] + 1))
+    global EXECUTOR
 
-    global MAX_REQUEST_THREADS
-    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-        while True:
-            # submit check requests
-            proc = []
-            for node in nodes:
-                p = executor.submit(node_neighbor_count, network, node)
-                proc.append((node, p))
-            # check results
-            notup = 0
-            bootstrapped = 0
-            stats = {}
-            for (node, p) in proc:
-                try:
-                    count = p.result()
-                except requests.RequestException as e:
-                    notup += 1
-                else:
-                    if count in stats:
-                        stats[count] += 1
-                    else:
-                        stats[count] = 1
-                    if count >= min_neighbors:
-                        bootstrapped += 1
-
-            if bootstrapped == len(nodes):
-                return
-
-            if notup > 0:
-                print('{} nodes are not up yet'.format(notup))
+    while True:
+        # submit check requests
+        proc = []
+        for node in nodes:
+            p = EXECUTOR.submit(node_neighbor_count, network, node)
+            proc.append((node, p))
+        # check results
+        notup = 0
+        bootstrapped = 0
+        stats = {}
+        for (node, p) in proc:
+            try:
+                count = p.result()
+            except requests.RequestException as e:
+                notup += 1
             else:
-                sstats = {'ok': 0}
-                for k in sorted(stats, reverse=True):
-                    if k > min_neighbors:
-                        sstats['ok'] += stats[k]
-                    else:
-                        sstats[k] = stats[k]
-                print('waiting for {} nodes to become ready.'.format(len(nodes)))
-                print('stats: {}'.format(sstats))
+                if count in stats:
+                    stats[count] += 1
+                else:
+                    stats[count] = 1
+                if count >= min_neighbors:
+                    bootstrapped += 1
 
-            # wait for a bit before retrying
-            time.sleep(1)
+        if bootstrapped == len(nodes):
+            return
+
+        if notup > 0:
+            print('{} nodes are not up yet'.format(notup))
+        else:
+            sstats = {'ok': 0}
+            for k in sorted(stats, reverse=True):
+                if k > min_neighbors:
+                    sstats['ok'] += stats[k]
+                else:
+                    sstats[k] = stats[k]
+            print('waiting for {} nodes to become ready.'.format(len(nodes)))
+            print('stats: {}'.format(sstats))
+
+        # wait for a bit before retrying
+        time.sleep(1)
 
 def node_neighbor_count(network: Network, node):
     payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
@@ -236,20 +236,21 @@ def register_topics(network: Network, zipf, config):
     # send a registration at exponentially distributed
     # times with average inter departure time of 1/rate
 
-    global MAX_REQUEST_THREADS
-    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-        while (len(nodes) > 0):
-            time_now = float(time.time())
-            if time_next > time_now:
-                time.sleep(time_next - time_now)
-            else:
-                node = random.choice(nodes)
-                nodes.remove(node)
-                topic = "t" + str(zipf.rv() + 1)
-                node_topic[node] = topic
-                PROCESSES.append(executor.submit(send_register, network, node, topic, gen_op_id()))
-                time_next = time_now + random.expovariate(request_rate)
+    global EXECUTOR
+    proc = []
+    while (len(nodes) > 0):
+        time_now = float(time.time())
+        if time_next > time_now:
+            time.sleep(time_next - time_now)
+        else:
+            node = random.choice(nodes)
+            nodes.remove(node)
+            topic = "t" + str(zipf.rv() + 1)
+            node_topic[node] = topic
+            proc.append(EXECUTOR.submit(send_register, network, node, topic, gen_op_id()))
+            time_next = time_now + random.expovariate(request_rate)
 
+    wait_for_processes(proc)
     return node_topic
 
 def send_register(network: Network, node: int, topic, op_id):
@@ -283,22 +284,20 @@ def search_topics(network: Network, zipf, config, node_to_topic):
     #print(request_rate)
     time_next = time_now + random.expovariate(request_rate)
 
-    #global MAX_REQUEST_THREADS
-    #with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-    #    for node in nodes:
-    #        topic = node_to_topic[node]
-    #        PROCESSES.append(executor.submit(send_lookup,node, topic, config, gen_op_id()))
-    with ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS) as executor:
-        while (len(nodes) > 0):
-            time_now = float(time.time())
-            if time_next > time_now:
-                time.sleep(time_next - time_now)
-            else:
-                node = random.choice(nodes)
-                nodes.remove(node)
-                topic = node_to_topic[node]
-                PROCESSES.append(executor.submit(send_lookup, network, node, topic, config, gen_op_id()))
-                time_next = time_now + random.expovariate(request_rate)
+    global EXECUTOR
+    proc = []
+    while (len(nodes) > 0):
+        time_now = float(time.time())
+        if time_next > time_now:
+            time.sleep(time_next - time_now)
+        else:
+            node = random.choice(nodes)
+            nodes.remove(node)
+            topic = node_to_topic[node]
+            proc.append(EXECUTOR.submit(send_lookup, network, node, topic, config, gen_op_id()))
+            time_next = time_now + random.expovariate(request_rate)
+
+    wait_for_processes(proc)
 
 def send_lookup(network: Network, node: int, topic, config, op_id):
     global LOGS
@@ -343,23 +342,23 @@ def run_workload(network: Network, params, out_dir):
     node_to_topic = register_topics(network, zipf, params)
 
     # wait for registrations to complete
+    print('Registrations completed, waiting...')
     time.sleep(params['adLifetimeSeconds'])
 
     # search
-    nrounds = config['searchIterations']
+    nrounds = params['searchIterations']
     for i in range(1, min(nrounds, 1)+1):
         print("Searching for topics round", i, "...")
         search_topics(network, zipf, params, node_to_topic)
 
-    global PROCESSES
-    for future in PROCESSES:
-        try:
-            result = future.result()
-        except Exception:
-            traceback.print_exc()
-            print('Unable to get the result')
-
     write_logs_to_file(os.path.join(out_dir, "logs", "logs.json"))
+
+def wait_for_processes(proc):
+    (done, _) = futures.wait(proc)
+    for p in done:
+        if p.exception():
+            print('error in worker', p)
+            traceback.print_exception(p.exception())
 
 
 def main():
