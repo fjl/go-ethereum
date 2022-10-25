@@ -159,34 +159,30 @@ def get_msg_df(log_path, op_df):
         for f in concurrent.futures.as_completed(rows_f):
             rows += f.result()
 
+    rows.sort(key=lambda row: row['timestamp'])
+    assign_missing_op_info(rows, op_info)
+
     print('Constructing the dataframe')
     msg_df = pd.DataFrame(rows)
-    msg_df.sort_values(by='timestamp', ascending=True, inplace=True)
-
-    return assign_missing_op_info(msg_df, op_info)
-
-# this function adds op_id, topic, op_type based on req_id.
-def assign_missing_op_info(msg_df: pd.DataFrame, op_info: dict):
-    print('Propagating message op_ids')
-    mapping = {} # req_id -> opid
-    def process(row):
-        op_id = row.get('opid', numpy.NaN)
-        if not numpy.isnan(op_id):
-            mapping[row['req_id']] = op_id
-            return row # fields already set by process_message
-
-        req = row['req_id']
-        if req in mapping:
-            op = mapping[req]
-            row['opid'] = op
-            row['topic'] = op_info[op]['topic']
-            row['op_type'] = op_info[op]['op_type']
-
-        return row
-
-    msg_df = msg_df.apply(process, axis=1, result_type='expand')
     msg_df.dropna(subset=['opid'], inplace=True)
     return msg_df
+
+# this function adds op_id, topic, op_type based on req_id.
+def assign_missing_op_info(rows: list, op_info: dict):
+    print('Propagating message op_ids')
+    mapping = {} # req_id -> opid
+    for row in rows:
+        if 'opid' in row:
+            mapping[row['req_id']] = row['opid']
+            continue # fields already set by process_message
+        if 'req_id' in row:
+            req = row['req_id']
+            if req in mapping:
+                op = mapping[req]
+                row['opid'] = op
+                row['topic'] = op_info[op]['topic']
+                row['op_type'] = op_info[op]['op_type']
+    return rows
 
 
 def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict):
