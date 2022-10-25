@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import seaborn as sns
 import numpy
-import heapq # to sort register removal events 
-import time 
+import heapq # to sort register removal events
+import time
 
 #log_path = "./discv5-test/logs"
 #log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
@@ -38,12 +38,12 @@ def get_storage_df(log_path):
                 #not a json line
                 continue
             jsons = json.loads(line)
-            
+
             if('adlifetime' not in jsons):
                continue
             msg_type = jsons['msg'].split(' ')[1]
             if msg_type != 'REGCONFIRMATION/v5':
-                continue 
+                continue
             in_out_s = jsons['msg'].split(' ')[0]
             if(in_out_s != '>>'):
                 continue
@@ -63,19 +63,19 @@ def get_storage_df(log_path):
 
 
     table_size = {}
-    table_size_ot = {} # table size over time 
+    table_size_ot = {} # table size over time
     init_time = None
     # Read the registration events in order
     while len(reg_events_heap) > 0:
         timestamp, registrar, adlifetime, advertiser = heapq.heappop(reg_events_heap)
-        
+
         # the first event will have timestamp of 0
         if init_time is None:
             init_time = timestamp
             timestamp = 0
         else:
             timestamp -= init_time
-            
+
         #print("Registration event at Registrar: ", registrar, "at time:", timestamp, "by advertiser:", advertiser)
 
         while len(ad_expiry_heap) > 0:
@@ -112,7 +112,7 @@ def get_storage_df(log_path):
     for node in list(nodes):
         table_size[node] = 0
     #print('nodes:', list(nodes))
-        
+
     for timestamp in times:
         #print ('Timestamp:', timestamp)
         row = {}
@@ -124,7 +124,7 @@ def get_storage_df(log_path):
             row['timestamp'] = timestamp
             row['node' + str(node)] = table_size[node]
             #print('Setting row node', str(node), 'to', table_size[node])
-            
+
         rows.append(row)
     storage_df = pd.DataFrame(rows)
 
@@ -278,9 +278,11 @@ def get_op_df(log_path):
 
     return op_df
 
+
 def plot_operation_returned(fig_dir,op_df):
     ax = op_df['reply_received'].value_counts().plot(kind = 'pie', autopct='%1.0f%%', legend=True, title='Operation returned')
     ax.figure.savefig(fig_dir + 'op_returned.'+form,format=form)
+
 
 def plot_operation_times(fig_dir,op_df):
     fig, axes = plt.subplots()
@@ -288,8 +290,8 @@ def plot_operation_times(fig_dir,op_df):
     sns.violinplot(x='method',y='time', data=df, ax = axes, cut=0)
     fig.savefig(fig_dir + 'operation_time.'+form,format=form)
 
-def plot_msg_operation(fig_dir,msg_df):
 
+def plot_msg_operation(fig_dir,msg_df):
     colors = ['red', 'green', 'blue', 'yellow']
 
     for op_type, group_op_type in msg_df.groupby('op_type'):
@@ -315,9 +317,11 @@ def plot_msg_operation(fig_dir,msg_df):
 
         fig.savefig(fig_dir + op_type+'.'+form,format=form)
 
+
 def plot_msg_sent_recv(fig_dir,msg_df):
     ax = msg_df['in_out'].value_counts().plot(kind='pie', autopct='%1.0f%%', legend=True, title='Msgs sent/received')
     ax.figure.savefig(fig_dir + 'msg_sent_received.'+form,format=form)
+
 
 def plot_msg_sent_recv2(fig_dir,msg_df):
     sent = msg_df[msg_df['in_out'] == 'out']['node_id'].value_counts().to_dict()
@@ -337,6 +341,7 @@ def plot_msg_sent_recv2(fig_dir,msg_df):
     ax.set_ylabel('#Messages')
     fig.savefig(fig_dir + 'messages.'+form,format=form)
 
+
 def plot_msg_sent_distrib(fig_dir,msg_df):
     fig, axes = plt.subplots()
 
@@ -355,6 +360,7 @@ def plot_msg_topic(fig_dir,msg_df):
     ax = msg_df['msg_type'].value_counts().plot(kind='bar')
     ax.figure.savefig(fig_dir + 'msg_type_count.'+form,format=form,bbox_inches="tight")
 
+
 def plot_msg_op_topic(fig_dir,msg_df):
     fig, ax = plt.subplots()
 
@@ -364,6 +370,7 @@ def plot_msg_op_topic(fig_dir,msg_df):
         group_op_type['topic'].value_counts().plot(kind='bar', title=op_type)
         ax.set_ylabel("#Messages")
         fig.savefig(fig_dir + op_type+'_msg_per_topic.'+form,format=form)
+
 
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
@@ -376,8 +383,8 @@ def plot_times_discovered(fig_dir,op_df):
     axes.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
-def plot_search_results(fig_dir,op_df):
 
+def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
     op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
@@ -389,13 +396,15 @@ def plot_search_results(fig_dir,op_df):
 
     fig.savefig(fig_dir + 'discovered_search.'+form,format=form)
 
-def plot_waiting_time(fig_dir,msg_df):
 
+def plot_waiting_time(fig_dir,msg_df):
     #consider only final regconfig message
     df = msg_df.dropna(subset=['ok'], inplace=False)
     fig, ax = plt.subplots()
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
+
+
 
 def plot_storage_per_node_over_time(fig_dir, storage_df):
     fig, axes = plt.subplots()
@@ -406,6 +415,22 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
             storage_df.plot(ax=axes, x='timestamp', y=column_name)
     lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
+
+
+def plot_mean_waiting_time(fig_dir, msg_df):
+    wtime_df = msg_df.dropna(subset=['wtime'])
+
+    fig, ax = plt.subplots()
+    wtime_df.groupby("node_id").wtime.mean().plot(kind='bar', ax=ax, title="Average issued wtime per Node")
+    ax.set_xlabel("Node ID")
+    ax.set_ylabel("Average issued waiting time")
+    fig.savefig(fig_dir + 'waiting_time_issued_avg.'+form, format=form)
+
+    fig, ax = plt.subplots()
+    wtime_df.groupby("peer_id").wtime.mean().plot(kind='bar', ax=ax, title="Average Received wtime per Node")
+    ax.set_xlabel("Node ID")
+    ax.set_ylabel("Average received waiting time")
+    fig.savefig(fig_dir + 'waiting_time_recv_avg.'+form, format=form)
 
 #storage_df = get_storage_df(log_path)
 #print('Storage_df:', storage_df)
@@ -459,6 +484,8 @@ def analyze(out_dir):
     plot_search_results(fig_dir,op_df)
 
     plot_waiting_time(fig_dir,msg_df)
+
+    plot_mean_waiting_time(fig_dir,msg_df)
 
     storage_df = get_storage_df(logs_dir)
     #print('Storage_df:', storage_df)
