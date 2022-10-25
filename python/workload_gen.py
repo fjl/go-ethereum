@@ -274,28 +274,23 @@ def send_register(network: Network, node: int, topic, op_id):
 
 
 def search_topics(network: Network, zipf, config, node_to_topic):
-    nodes = list(range(1, config['nodes'] + 1))
-    node = random.choice(nodes)
-    nodes = list(range(1, config['nodes'] + 1))
-
-    time_now = float(time.time())
-
-    request_rate = config['nodes'] / config['lookupTime']
-    #print(request_rate)
-    time_next = time_now + random.expovariate(request_rate)
+    req_rate = config['nodes'] / config['lookupTime']
+    req_counts = {
+        node: config['searchIterations']
+        for node in range(1, config['nodes'] + 1)
+    }
 
     global EXECUTOR
     proc = []
-    while (len(nodes) > 0):
-        time_now = float(time.time())
-        if time_next > time_now:
-            time.sleep(time_next - time_now)
-        else:
-            node = random.choice(nodes)
-            nodes.remove(node)
-            topic = node_to_topic[node]
-            proc.append(EXECUTOR.submit(send_lookup, network, node, topic, config, gen_op_id()))
-            time_next = time_now + random.expovariate(request_rate)
+    while len(req_counts) > 0:
+        node = random.choice(list(req_counts.keys()))
+        req_counts[node] -= 1
+        if req_counts[node] <= 0:
+            del req_counts[node]
+
+        topic = node_to_topic[node]
+        proc.append(EXECUTOR.submit(send_lookup, network, node, topic, config, gen_op_id()))
+        time.sleep(req_rate)
 
     wait_for_processes(proc)
 
@@ -346,10 +341,8 @@ def run_workload(network: Network, params, out_dir):
     time.sleep(params['adLifetimeSeconds'])
 
     # search
-    nrounds = params['searchIterations']
-    for i in range(1, min(nrounds, 1)+1):
-        print("Searching for topics round", i, "...")
-        search_topics(network, zipf, params, node_to_topic)
+    print("Searching...")
+    search_topics(network, zipf, params, node_to_topic)
 
     write_logs_to_file(os.path.join(out_dir, "logs", "logs.json"))
 
