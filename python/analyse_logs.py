@@ -460,8 +460,10 @@ def analyze(out_dir):
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
 
+    print('Computing op_df')
     op_df = get_op_df(logs_dir)
 
+    print('Computing msg_df')
     msg_df = get_msg_df(logs_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
 
@@ -487,6 +489,7 @@ def analyze(out_dir):
 
     plot_mean_waiting_time(fig_dir,msg_df)
 
+    print('Computing storage_df')
     storage_df = get_storage_df(logs_dir)
     #print('Storage_df:', storage_df)
     plot_storage_per_node_over_time(fig_dir, storage_df)
