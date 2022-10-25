@@ -462,11 +462,16 @@ def analyze(out_dir):
 
     print('Computing op_df')
     op_df = get_op_df(logs_dir)
+    op_df.to_csv('op_df.csv')
+    print('Written to op_df.csv')
 
     print('Computing msg_df')
     msg_df = get_msg_df(logs_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
-
+    msg_df.to_csv('msg_df.csv')
+    print('Written to msg_df.csv')
+    return 
+    
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
