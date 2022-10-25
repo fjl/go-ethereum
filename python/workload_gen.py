@@ -343,12 +343,13 @@ def run_workload(network: Network, params, out_dir):
     node_to_topic = register_topics(network, zipf, params)
 
     # wait for registrations to complete
-    # search
-    #print("Waiting adlifetime...")
     time.sleep(params['adLifetimeSeconds'])
 
-    print("Searching for topics...")
-    search_topics(network, zipf, params, node_to_topic)
+    # search
+    nrounds = config['searchIterations']
+    for i in range(1, min(nrounds, 1)+1):
+        print("Searching for topics round", i, "...")
+        search_topics(network, zipf, params, node_to_topic)
 
     global PROCESSES
     for future in PROCESSES:
