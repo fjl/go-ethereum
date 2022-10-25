@@ -23,6 +23,9 @@ network_config_defaults = {
     'udpBasePort': 30200,
 }
 
+MIN_LATENCY=2
+MAX_LATENCY=40
+
 class Network:
     config = {}
 
@@ -161,7 +164,8 @@ class NetworkDocker(Network):
         container_id = p.stdout.split('\n')[0]
         print('started node', n, 'container:', container_id)
         self.containers.append(container_id)
-
+        #self._config_network(n)
+        
     def create_docker_networks(self, nodes):
         for node in range(1,nodes+1):
             network = self._node_network_name(node)
@@ -202,7 +206,17 @@ class NetworkDocker(Network):
         ip=str(IP1)+"."+str(IP2)+"."+str(IP3)
         return ip
 
+    def config_network(self, node):
+        latency = random.randint(MIN_LATENCY,MAX_LATENCY)
+        subprocess.Popen("docker exec node"+str(node)+" sh -c 'tc qdisc add dev eth0 root netem delay "+str(latency)+"ms'", stdout=subprocess.DEVNULL, stderr=None,shell=True)
 
+        #command = 'sh -c "tc qdisc add dev eth0 root netem delay '+str(latency)+'ms"'
+        #argv = ["docker","exec","node"+str(node),command]
+        #p = subprocess.run(argv, capture_output=True, text=True)
+        #if p.returncode != 0:
+        #    print(p.stderr)
+        #    p.check_returncode()
+        
 def create_enrs(network: Network, config_path: str, n: int):
     return [ network.node_enr(config_path, node) for node in range(1, n+1) ]
 
@@ -228,6 +242,8 @@ def start_nodes(network: Network, config_path: str, params: dict):
         bn = select_bootnodes(enrs)
         network.start_node(i, bootnodes=bn, nodekey=nodekey, config_path=config_path)
 
+        if isinstance(network, NetworkDocker):
+            network.config_network(i)
     print("Nodes started")
 
 # make_keys creates all node keys.
