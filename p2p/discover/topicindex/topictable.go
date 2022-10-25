@@ -19,6 +19,7 @@ package topicindex
 import (
 	"container/list"
 	"math"
+	"math/rand"
 	"net"
 	"time"
 
@@ -81,6 +82,44 @@ func (tab *TopicTable) Nodes(topic TopicID) []*enode.Node {
 		reg := e.Value.(*topicTableEntry)
 		if reg.exp > now {
 			nodes = append(nodes, reg.node)
+		}
+	}
+	return nodes
+}
+
+// RandomNodes returns n random nodes registered for a topic.
+// It only collects nodes for which the 'check' function returns true.
+func (tab *TopicTable) RandomNodes(topic TopicID, n int, check func(*enode.Node) bool) []*enode.Node {
+	reglist := tab.reg[topic]
+	if reglist == nil || n == 0 {
+		return []*enode.Node{}
+	}
+	if n > reglist.Len() {
+		n = reglist.Len()
+	}
+
+	// Collect the nodes using 'reservoir sampling'.
+	// First, fill the result with initial entries.
+	nodes := make([]*enode.Node, 0, n)
+	e := reglist.Front()
+	for ; e != nil && len(nodes) < n; e = e.Next() {
+		reg := e.Value.(*topicTableEntry)
+		if check(reg.node) {
+			nodes = append(nodes, reg.node)
+		}
+	}
+
+	// Add remaining items conditionally.
+	seen := len(nodes)
+	for ; e != nil; e = e.Next() {
+		reg := e.Value.(*topicTableEntry)
+		if !check(reg.node) {
+			continue
+		}
+		seen++
+		x := rand.Intn(seen)
+		if x < len(nodes) {
+			nodes[x] = reg.node
 		}
 	}
 	return nodes
