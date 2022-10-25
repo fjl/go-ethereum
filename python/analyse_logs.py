@@ -141,12 +141,13 @@ def get_storage_and_advertisement_dist_df(log_path):
         for registrar in reg_events.keys():
             table_size[registrar] = reg_events[registrar]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
-        for node in list(nodes):
             row['timestamp'] = timestamp
-            row['node' + str(node)] = table_size[node]
+            row['node'] = registrar
+            row['num_ads_stored'] = table_size[registrar]
             #print('Setting row node', str(node), 'to', table_size[node])
 
-        rows_storage.append(row)
+            rows_storage.append(row)
+
     storage_df = pd.DataFrame(rows_storage)
     
     for timestamp in times:
@@ -156,12 +157,13 @@ def get_storage_and_advertisement_dist_df(log_path):
         for advertiser in advert_events.keys():
             num_adverts[advertiser] = advert_events[advertiser]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
-        for node in list(nodes):
             row['timestamp'] = timestamp
-            row['node' + str(node)] = num_adverts[node]
+            row['node'] = advertiser
+            row['num_ads_registered'] = num_adverts[advertiser]
             #print('Setting row node', str(node), 'to', table_size[node])
 
-        rows_ad_dist.append(row)
+            rows_ad_dist.append(row)
+
     ad_dist_df = pd.DataFrame(rows_ad_dist)
 
     return storage_df, ad_dist_df
@@ -426,6 +428,15 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
     lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
+def plot_ads_per_node_over_time(fig_dir, adverts_df):
+    fig, axes = plt.subplots()
+    axes.set_xlabel("Time (msec)")
+    axes.set_ylabel("Number of active advertisements")
+    for column_name in adverts_df:
+        if 'node' in column_name:
+            adverts_df.plot(ax=axes, x='timestamp', y=column_name)
+    lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
+    fig.savefig(fig_dir + 'advertisement_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
 def plot_mean_waiting_time(fig_dir, msg_df):
     wtime_df = msg_df.dropna(subset=['wtime'])
@@ -498,10 +509,10 @@ def analyze(out_dir):
 
     plot_mean_waiting_time(fig_dir,msg_df)
 
-    print('Computing storage_df')
     storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
-    #print('Storage_df:', storage_df)
-    plot_storage_per_node_over_time(fig_dir, storage_df)
+    # TODO update plotting (ones below won't work anymore) - dataframes have been updated for heat maps
+    #plot_storage_per_node_over_time(fig_dir, storage_df)
+    #plot_ads_per_node_over_time(fig_dir, advert_dist_df)
 
     plt.close()
 
