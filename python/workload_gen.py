@@ -274,7 +274,7 @@ def send_register(network: Network, node: int, topic, op_id):
 
 
 def search_topics(network: Network, zipf, config, node_to_topic):
-    req_rate = config['nodes'] / config['lookupTime']
+    req_delay = config['lookupTime'] / config['nodes']
     req_counts = {
         node: config['searchIterations']
         for node in range(1, config['nodes'] + 1)
@@ -290,7 +290,7 @@ def search_topics(network: Network, zipf, config, node_to_topic):
 
         topic = node_to_topic[node]
         proc.append(EXECUTOR.submit(send_lookup, network, node, topic, config, gen_op_id()))
-        time.sleep(req_rate)
+        time.sleep(req_delay)
 
     wait_for_processes(proc)
 
