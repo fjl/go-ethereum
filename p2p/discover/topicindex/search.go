@@ -144,8 +144,10 @@ func (s *Search) AddNodes(src *enode.Node, nodes []*enode.Node) {
 				continue
 			}
 		}
-		if !b.ips.Add(n.IP()) {
+		ip := n.IP()
+		if !netutil.IsLAN(ip) && !b.ips.Add(n.IP()) {
 			s.cfg.Log.Debug("Ignoring search node", "id", n.ID(), "reason", "iplimit")
+			continue
 		}
 
 		// All checks passed, add the node.
