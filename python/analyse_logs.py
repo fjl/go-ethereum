@@ -163,7 +163,10 @@ def get_msg_df(log_path, op_df):
     msg_df = pd.DataFrame(rows)
     msg_df.sort_values(by='timestamp', ascending=True, inplace=True)
 
-    # associate op_id, topic, op_type with all messages.
+    return assign_missing_op_info(msg_df, op_info)
+
+# this function adds op_id, topic, op_type based on req_id.
+def assign_missing_op_info(msg_df: pd.DataFrame, op_info: dict):
     print('Propagating message op_ids')
     mapping = {} # req_id -> opid
     def process(row):
@@ -172,20 +175,17 @@ def get_msg_df(log_path, op_df):
             mapping[row['req_id']] = op_id
             return row # fields already set by process_message
 
-        req_id = row['req_id']
-        if req_id in mapping:
-            op_id = mapping[req_id]
-            row['opid'] = op_id
-            row['topic'] = op_info[op_id]['topic']
-            row['op_type'] = op_info[op_id]['op_type']
-        else:
-            row['opid'] = numpy.NaN
-            row['topic'] = numpy.NaN
-            row['op_type'] = numpy.NaN
+        req = row['req_id']
+        if req in mapping:
+            op = mapping[req]
+            row['opid'] = op
+            row['topic'] = op_info[op]['topic']
+            row['op_type'] = op_info[op]['op_type']
+
         return row
 
-    msg_df = msg_df.apply(lambda row : process(row), axis = 1)
-    msg_df = msg_df.dropna(subset=['opid'])
+    msg_df = msg_df.apply(process, axis=1, result_type='expand')
+    msg_df.dropna(subset=['opid'], inplace=True)
     return msg_df
 
 
@@ -377,8 +377,8 @@ def plot_search_results(fig_dir,op_df):
 
 
 def plot_waiting_time(fig_dir,msg_df):
-    #consider only final regconfig message
-    df = msg_df.dropna(subset=['ok'], inplace=False)
+    # consider only final REGTOPIC message
+    df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
     fig, ax = plt.subplots()
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
