@@ -45,12 +45,11 @@ def gen_node_id():
 
 # Write json logs to a file
 def write_logs_to_file(fname):
+    print("Writing request logs to", fname)
     global LOGS
     LOGS.put(None)
-    print("LOGS: ", LOGS)
     with open(fname, 'w+') as f:
         for data in iter(LOGS.get, None):
-            print("Data: ", data)
             json.dump(data, f)
             f.write("\n")
 
