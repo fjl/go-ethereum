@@ -31,8 +31,9 @@ def get_storage_df(log_path):
         if (not log_file.startswith("node-")):
             continue
         print("Reading", log_file)
-        advertiser = int(log_file.split('-')[1].split('.')[0]) #node-10.log
-        nodes.add(advertiser)
+        registrar = int(log_file.split('-')[1].split('.')[0]) #node-10.log
+        nodes.add(registrar)
+
         for line in open(log_path + '/' + log_file, 'r').readlines():
             if(line[0] != '{'):
                 #not a json line
@@ -40,7 +41,7 @@ def get_storage_df(log_path):
             jsons = json.loads(line)
 
             if('adlifetime' not in jsons):
-               continue
+                continue
             msg_type = jsons['msg'].split(' ')[1]
             if msg_type != 'REGCONFIRMATION/v5':
                 continue
@@ -50,8 +51,9 @@ def get_storage_df(log_path):
             ok = jsons['ok']
             if (ok != 'true'):
                 continue
+
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
-            registrar = int(jsons['addr'].split(':')[1]) - 30200
+            advertiser = int(jsons['addr'].split(':')[1]) - 30200
 
             if(registrar == advertiser):
                 print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
