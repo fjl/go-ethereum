@@ -16,9 +16,9 @@ import concurrent.futures
 #log_path = "./discv5-test/logs"
 #log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
 form = 'pdf'
-#log_path = "../discv5-test/logs"
+log_path = "../discv5-test/logs"
 
-def get_storage_df(log_path):
+def get_storage_and_advertisement_dist_df(log_path):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 1000):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
@@ -64,9 +64,12 @@ def get_storage_df(log_path):
             heapq.heappush(reg_events_heap, (unix_time, registrar, adlifetime, advertiser))
 
 
-    table_size = {}
-    table_size_ot = {} # table size over time
+    table_size = {} # {node : node's table size}
+    table_size_ot = {} # {timestamp : { node : node's table size} }
     init_time = None
+    num_adverts = {} # {node : number of active adverts by the node}
+    num_adverts_ot = {} # {timestamp : {node : number of adverts by the node}}
+  
     # Read the registration events in order
     while len(reg_events_heap) > 0:
         timestamp, registrar, adlifetime, advertiser = heapq.heappop(reg_events_heap)
@@ -85,12 +88,16 @@ def get_storage_df(log_path):
             expiry_time = tupl[0]
 
             if(expiry_time is not None and expiry_time <= timestamp):
-                expiry_time, node = heapq.heappop(ad_expiry_heap)
-                table_size[node] = table_size[node] - 1
+                expiry_time, expRegistrar, expAdvertiser = heapq.heappop(ad_expiry_heap)
+                table_size[expRegistrar] = table_size[expRegistrar] - 1
+                num_adverts[expAdvertiser] = num_adverts[expAdvertiser] - 1
                 if expiry_time not in table_size_ot.keys():
                     table_size_ot[expiry_time] = {}
+                if expiry_time not in num_adverts_ot.keys():
+                    num_adverts_ot[expiry_time] = {}
 
-                table_size_ot[expiry_time][node] = table_size[node]
+                table_size_ot[expiry_time][expRegistrar] = table_size[expRegistrar]
+                num_adverts_ot[expiry_time][expAdvertiser] = num_adverts[expAdvertiser]
                 #print('Ad expiration  at registrar: ', node, 'at time:', expiry_time, 'setting table size to', table_size[node])
             else:
                 break
@@ -100,19 +107,31 @@ def get_storage_df(log_path):
         else:
             table_size[registrar] = table_size[registrar] + 1
 
+        if advertiser not in num_adverts.keys():
+            num_adverts[advertiser] = 1
+        else:
+            num_adverts[advertiser] = num_adverts[advertiser] + 1
+
         if timestamp not in table_size_ot.keys():
             table_size_ot[timestamp] = {}
         table_size_ot[timestamp][registrar] = table_size[registrar]
-        #print('Timestamp:', timestamp, 'registrar:', registrar, 'size:', table_size[registrar], 'adlifetime:', adlifetime)
-        heapq.heappush(ad_expiry_heap, (timestamp + adlifetime, registrar))
 
-    rows = []
+        if timestamp not in num_adverts_ot.keys():
+            num_adverts_ot[timestamp] = {}
+        num_adverts_ot[timestamp][advertiser] = num_adverts[advertiser]
+
+        #print('Timestamp:', timestamp, 'registrar:', registrar, 'size:', table_size[registrar], 'adlifetime:', adlifetime)
+        heapq.heappush(ad_expiry_heap, (timestamp + adlifetime, registrar, advertiser))
+
+    rows_storage = []
+    rows_ad_dist = []
     times = list(table_size_ot.keys())
     times = sorted(times)
     #print('table_size_ot: ', table_size_ot)
     table_size = {}
     for node in list(nodes):
         table_size[node] = 0
+        num_adverts[node] = 0
     #print('nodes:', list(nodes))
 
     for timestamp in times:
@@ -127,10 +146,25 @@ def get_storage_df(log_path):
             row['node' + str(node)] = table_size[node]
             #print('Setting row node', str(node), 'to', table_size[node])
 
-        rows.append(row)
-    storage_df = pd.DataFrame(rows)
+        rows_storage.append(row)
+    storage_df = pd.DataFrame(rows_storage)
+    
+    for timestamp in times:
+        #print ('Timestamp:', timestamp)
+        row = {}
+        advert_events = num_adverts_ot[timestamp]
+        for advertiser in advert_events.keys():
+            num_adverts[advertiser] = advert_events[advertiser]
+            #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        for node in list(nodes):
+            row['timestamp'] = timestamp
+            row['node' + str(node)] = num_adverts[node]
+            #print('Setting row node', str(node), 'to', table_size[node])
 
-    return storage_df
+        rows_ad_dist.append(row)
+    ad_dist_df = pd.DataFrame(rows_ad_dist)
+
+    return storage_df, ad_dist_df
 
 
 def get_msg_df(log_path, op_df):
@@ -408,7 +442,7 @@ def plot_mean_waiting_time(fig_dir, msg_df):
     ax.set_ylabel("Average received waiting time")
     fig.savefig(fig_dir + 'waiting_time_recv_avg.'+form, format=form)
 
-#storage_df = get_storage_df(log_path)
+#storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(log_path)
 #print('Storage_df:', storage_df)
 #plot_storage_per_node_over_time('./', storage_df)
 
@@ -460,7 +494,7 @@ def analyze(out_dir):
     plot_mean_waiting_time(fig_dir,msg_df)
 
     print('Computing storage_df')
-    storage_df = get_storage_df(logs_dir)
+    storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
     #print('Storage_df:', storage_df)
     plot_storage_per_node_over_time(fig_dir, storage_df)
 
