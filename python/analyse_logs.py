@@ -9,9 +9,9 @@ import numpy
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import seaborn as sns
-import numpy
 import heapq # to sort register removal events
 import time
+import concurrent.futures
 
 #log_path = "./discv5-test/logs"
 #log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
@@ -132,6 +132,7 @@ def get_storage_df(log_path):
 
     return storage_df
 
+
 def get_msg_df(log_path, op_df):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
@@ -144,24 +145,60 @@ def get_msg_df(log_path, op_df):
         op_info[opid] = {'op_type':op_type, 'topic':topic}
 
     rows = []
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # launch parser threads
+        rows_f = []
+        for log_file in os.listdir(log_path):
+            if (not log_file.startswith("node-")):
+                continue
+            print("Reading", log_file)
+            fname = os.path.join(log_path, log_file)
+            rows_f.append(executor.submit(parse_msg_logs, fname, topic_mapping, op_info))
+
+        # concatenate parsing results
+        for f in concurrent.futures.as_completed(rows_f):
+            rows += f.result()
+
+    rows.sort(key=lambda row: row['timestamp'])
+    assign_missing_op_info(rows, op_info)
+
+    print('Constructing the dataframe')
+    msg_df = pd.DataFrame(rows)
+    msg_df.dropna(subset=['opid'], inplace=True)
+    return msg_df
+
+# this function adds op_id, topic, op_type based on req_id.
+def assign_missing_op_info(rows: list, op_info: dict):
+    print('Propagating message op_ids')
+    mapping = {} # req_id -> opid
+    for row in rows:
+        if 'opid' in row:
+            mapping[row['req_id']] = row['opid']
+            continue # fields already set by process_message
+        if 'req_id' in row:
+            req = row['req_id']
+            if req in mapping:
+                op = mapping[req]
+                row['opid'] = op
+                row['topic'] = op_info[op]['topic']
+                row['op_type'] = op_info[op]['op_type']
+    return rows
+
+
+def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict):
+    rows = []
     def process_message(node_id, jsons):
          msg = jsons['msg']
-         if msg.startswith('>> '):
-             direction = 'out'
-         elif msg.startswith('<< '):
-             direction = 'in'
-         else:
+         if not msg.startswith('>> '):
              return # it's not a message sent between peers
 
          row = {
              'node_id': node_id,
-             'in_out': direction,
              # get peer ID from the port number
              'peer_id': int(jsons['addr'].split(':')[1]) - 30200,
              'timestamp': parse(jsons['t']),
-             'msg_type': jsons['msg'].split(' ')[1].split(':')[0],
+             'msg_type': msg.split(' ')[1].split(':')[0],
          }
-
          if('req' in jsons):
              row['req_id'] = jsons['req']
          if('total-wtime' in jsons):
@@ -187,46 +224,17 @@ def get_msg_df(log_path, op_df):
 
          rows.append(row)
 
-    for log_file in os.listdir(log_path):
-        if (not log_file.startswith("node-")):
-            continue
+    fname_base = os.path.basename(fname) # node-10.log
+    node_id = fname_base.split('-')[1].split('.')[0]
+    with open(fname, 'r') as f:
+        for line in f:
+            if line[0] == '{':
+                jsons = json.loads(line)
+                if 'addr' in jsons:
+                    process_message(node_id, jsons)
 
-        print("Reading", log_file)
-        node_id = log_file.split('-')[1].split('.')[0] #node-10.log
-        with open(log_path + '/' + log_file, 'r') as f:
-            for line in f:
-                if line[0] == '{':
-                    jsons = json.loads(line)
-                    if 'addr' in jsons:
-                        process_message(node_id, jsons)
+    return rows
 
-    print('Constructing the dataframe')
-    msg_df = pd.DataFrame(rows)
-
-    # associate op_id, topic, op_type with all messages.
-    print('Propagating message op_ids')
-    mapping = {} # req_id -> opid
-    def process(row):
-        op_id = row.get('opid', numpy.NaN)
-        if not numpy.isnan(op_id):
-            mapping[row['req_id']] = op_id
-            return # fields already set by process_message
-
-        req_id = row['req_id']
-        if req_id in mapping:
-            op_id = mapping[req_id]
-            row['opid'] = op_id
-            row['topic'] = op_info[op_id]['topic']
-            row['op_type'] = op_info[op_id]['op_type']
-        else:
-            row['opid'] = numpy.NaN
-            row['topic'] = numpy.NaN
-            row['op_type'] = numpy.NaN
-        return row
-
-    msg_df = msg_df.apply(lambda row : process(row), axis = 1)
-    msg_df = msg_df.dropna(subset=['opid'])
-    return msg_df
 
 def get_op_df(log_path):
     topic_mapping = {} #reverse engineer the topic hash
@@ -323,43 +331,6 @@ def plot_msg_operation(fig_dir,msg_df):
         fig.savefig(fig_dir + op_type+'.'+form,format=form)
 
 
-def plot_msg_sent_recv(fig_dir,msg_df):
-    ax = msg_df['in_out'].value_counts().plot(kind='pie', autopct='%1.0f%%', legend=True, title='Msgs sent/received')
-    ax.figure.savefig(fig_dir + 'msg_sent_received.'+form,format=form)
-
-
-def plot_msg_sent_recv2(fig_dir,msg_df):
-    sent = msg_df[msg_df['in_out'] == 'out']['node_id'].value_counts().to_dict()
-    sent = {int(k):int(v) for k,v in sent.items()} #convert IDs to int
-
-    received = msg_df[msg_df['in_out'] == 'out']['peer_id'].value_counts().to_dict()
-    received = {int(k):int(v) for k,v in received.items()} #convert IDs to int
-
-    fig, ax = plt.subplots()
-
-    width =0.3
-    ax.bar(sent.keys(), sent.values(), width=width, label = 'sent')
-    ax.bar([x + width for x in received.keys()], received.values(), width=width, label = 'received')
-    ax.legend()
-    ax.set_title('Messages exchanged')
-    ax.set_xlabel('Node ID')
-    ax.set_ylabel('#Messages')
-    fig.savefig(fig_dir + 'messages.'+form,format=form)
-
-
-def plot_msg_sent_distrib(fig_dir,msg_df):
-    fig, axes = plt.subplots()
-
-    df_in = msg_df[msg_df['in_out']=='in']['node_id'].value_counts().rename_axis('node_id').reset_index(name='count')
-    df_in['in_out'] = 'in'
-    df_out = msg_df[msg_df['in_out']=='out']['node_id'].value_counts().rename_axis('node_id').reset_index(name='count')
-    df_out['in_out'] = 'out'
-
-    df = pd.concat([df_in, df_out], axis=0)
-    sns.violinplot(x='in_out', y='count', data=df, ax = axes, cut=0, title='#Msg received/sent distribution per node')
-    fig.savefig(fig_dir + 'msg_rcv_dist.'+form,format=form)
-
-
 def plot_msg_topic(fig_dir,msg_df):
     fig, ax = plt.subplots()
     ax = msg_df['msg_type'].value_counts().plot(kind='bar')
@@ -403,8 +374,8 @@ def plot_search_results(fig_dir,op_df):
 
 
 def plot_waiting_time(fig_dir,msg_df):
-    #consider only final regconfig message
-    df = msg_df.dropna(subset=['ok'], inplace=False)
+    # consider only final REGTOPIC message
+    df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
     fig, ax = plt.subplots()
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
@@ -482,12 +453,6 @@ def analyze(out_dir):
     plot_operation_times(fig_dir,op_df)
 
     plot_msg_operation(fig_dir, msg_df)
-
-    plot_msg_sent_recv(fig_dir,msg_df)
-
-    plot_msg_sent_recv2(fig_dir,msg_df)
-
-    plot_msg_sent_distrib(fig_dir,msg_df)
 
     plot_msg_topic(fig_dir,msg_df)
 

@@ -1,4 +1,4 @@
-features =  {'nodes': {'type': 'benign', 'default': 50,'defaultAttack': 50, 'vals':[50]},
+features =  {'nodes': {'type': 'benign', 'default': 1000,'defaultAttack': 50, 'vals':[1000]},
              'topic': {'type': 'benign', 'default': 1, 'defaultAttack': 1,'vals':[1]},
              'bucketRefreshInterval': {'type': 'benign', 'default': 60, 'defaultAttack': 60, 'vals':[60]},
              'regBucketSize': {'type': 'benign', 'default': 10, 'defaultAttack': 10, 'vals':[10]},

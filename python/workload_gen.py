@@ -274,38 +274,38 @@ def send_register(network: Network, node: int, topic, op_id):
 
 
 def search_topics(network: Network, zipf, config, node_to_topic):
-    nodes = list(range(1, config['nodes'] + 1))
-    node = random.choice(nodes)
-    nodes = list(range(1, config['nodes'] + 1))
-
-    time_now = float(time.time())
-
-    request_rate = config['nodes'] / config['lookupTime']
-    #print(request_rate)
-    time_next = time_now + random.expovariate(request_rate)
+    req_total_count = config['nodes'] * config['searchIterations']
+    req_delay = config['lookupTime'] / config['nodes']
+    req_counts = {
+        node: config['searchIterations']
+        for node in range(1, config['nodes'] + 1)
+    }
 
     global EXECUTOR
     proc = []
-    while (len(nodes) > 0):
-        time_now = float(time.time())
-        if time_next > time_now:
-            time.sleep(time_next - time_now)
-        else:
-            node = random.choice(nodes)
-            nodes.remove(node)
-            topic = node_to_topic[node]
-            proc.append(EXECUTOR.submit(send_lookup, network, node, topic, config, gen_op_id()))
-            time_next = time_now + random.expovariate(request_rate)
+    i = 0
+    while len(req_counts) > 0:
+        i += 1
+        node = random.choice(list(req_counts.keys()))
+        req_counts[node] -= 1
+        if req_counts[node] <= 0:
+            del req_counts[node]
+
+        topic = node_to_topic[node]
+        want_num_results = config['returnedNodes']
+
+        print('[{}/{}] Node {} is searching for {} nodes in topic: {}'.format(i, req_total_count, node, want_num_results, topic))
+        proc.append(EXECUTOR.submit(send_lookup, network, node=node, topic=topic, nresults=want_num_results, op_id=gen_op_id()))
+        time.sleep(req_delay)
 
     wait_for_processes(proc)
 
-def send_lookup(network: Network, node: int, topic, config, op_id):
+def send_lookup(network: Network, node=0, topic=0, nresults=0, op_id=0):
     global LOGS
     topic_digest = get_topic_digest(topic)
-    want_num_results = config['returnedNodes']
     payload = {
         "method": "discv5_topicSearch",
-        "params": [topic_digest, want_num_results, op_id],
+        "params": [topic_digest, nresults, op_id],
         "jsonrpc": "2.0",
         "id": op_id,
     }
@@ -313,12 +313,11 @@ def send_lookup(network: Network, node: int, topic, config, op_id):
     payload["time"] = get_current_time_msec()
     LOGS.put(payload)
 
-    print('Node {} is searching for {} nodes in topic: {}'.format(node, want_num_results, topic))
     resp = requests.post(network.node_api_url(node), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    #print('Search response: ', resp)
-    print('Search response: Found {} nodes'.format(len(resp["result"])))
+    d = resp['time'] - payload['time']
+    print('Search response: node {} found {} nodes in {}ms'.format(node, len(resp["result"]), d))
     LOGS.put(resp)
 
 
@@ -329,7 +328,6 @@ def read_config(dir):
     with open(file) as f:
         config = json.load(f)
     assert isinstance(config.get('nodes'), int)
-    assert isinstance(config.get('rpcBasePort'), int)
     return config
 
 
@@ -346,10 +344,8 @@ def run_workload(network: Network, params, out_dir):
     time.sleep(params['adLifetimeSeconds'])
 
     # search
-    nrounds = params['searchIterations']
-    for i in range(1, min(nrounds, 1)+1):
-        print("Searching for topics round", i, "...")
-        search_topics(network, zipf, params, node_to_topic)
+    print("Searching...")
+    search_topics(network, zipf, params, node_to_topic)
 
     write_logs_to_file(os.path.join(out_dir, "logs", "logs.json"))
 

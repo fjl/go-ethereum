@@ -17,7 +17,10 @@
 package topicindex
 
 import (
+	"bytes"
+	"fmt"
 	mrand "math/rand"
+	"sort"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/internal/testlog"
@@ -33,7 +36,7 @@ var (
 
 func TestTopicTableWait(t *testing.T) {
 	cfg := testConfig(t)
-	tab := NewTopicTable(enode.ID{}, cfg)
+	tab := NewTopicTable(cfg)
 
 	n := newNode()
 	wt := tab.Register(n, topic1, 0)
@@ -48,7 +51,7 @@ func TestTopicTableWait(t *testing.T) {
 
 func TestTopicTableRegisterTwice(t *testing.T) {
 	cfg := testConfig(t)
-	tab := NewTopicTable(enode.ID{}, cfg)
+	tab := NewTopicTable(cfg)
 
 	n := newNode()
 	tab.Add(n, topic1)
@@ -57,6 +60,43 @@ func TestTopicTableRegisterTwice(t *testing.T) {
 	if wt != 0 {
 		t.Fatalf("wrong wait time %v for already-registered node", wt)
 	}
+}
+
+func TestTopicTableRandomNodes(t *testing.T) {
+	cfg := testConfig(t)
+	tab := NewTopicTable(cfg)
+
+	const N = 20
+
+	var topic1nodes []enode.ID
+	for i := 0; i < N; i++ {
+		n := newNode()
+		ok := tab.Add(n, topic1)
+		if !ok {
+			t.Fatalf("can't add node %d", i)
+		}
+		topic1nodes = append(topic1nodes, n.ID())
+	}
+	sortIDs(topic1nodes)
+
+	alwaysTrue := func(*enode.Node) bool { return true }
+
+	check := func(t *testing.T, n int, expectedResults int) {
+		result := tab.RandomNodes(topic1, n, alwaysTrue)
+		ids := uniqueNodeIDs(result)
+		sortIDs(ids)
+
+		if len(ids) != len(result) {
+			t.Error("results are not unique")
+		}
+		if len(ids) != expectedResults {
+			t.Errorf("wrong number of results: %d, want %d", len(ids), expectedResults)
+		}
+	}
+
+	t.Run(fmt.Sprint(N), func(t *testing.T) { check(t, N, N) })
+	t.Run(fmt.Sprint(N-1), func(t *testing.T) { check(t, N-1, N-1) })
+	t.Run(fmt.Sprint(N+1), func(t *testing.T) { check(t, N+1, N) })
 }
 
 func testConfig(t *testing.T) Config {
@@ -71,4 +111,30 @@ func newNode() *enode.Node {
 	var id enode.ID
 	mrand.Read(id[:])
 	return enode.SignNull(&r, id)
+}
+
+func randomNodes(n int) []*enode.Node {
+	nodes := make([]*enode.Node, n)
+	for i := range nodes {
+		nodes[i] = newNode()
+	}
+	return nodes
+}
+
+func uniqueNodeIDs(nodes []*enode.Node) []enode.ID {
+	byID := make(map[enode.ID]struct{}, len(nodes))
+	for _, n := range nodes {
+		byID[n.ID()] = struct{}{}
+	}
+	ids := make([]enode.ID, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func sortIDs(ids []enode.ID) {
+	sort.Slice(ids, func(i, j int) bool {
+		return bytes.Compare(ids[i][:], ids[j][:]) < 0
+	})
 }
