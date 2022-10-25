@@ -964,16 +964,9 @@ func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wi
 	nodesResponses := packNodes(unwrapNodes(auxNodes.entries))
 
 	// Get matching nodes from the topic table.
-	var topicNodes []*enode.Node
-	for _, n := range t.topicTable.Nodes(p.Topic) {
-		if len(topicNodes) >= topicNodesResultLimit {
-			break
-		}
-		if netutil.CheckRelayIP(fromAddr.IP, n.IP()) != nil {
-			continue // skip unrelayable nodes
-		}
-		topicNodes = append(topicNodes, n)
-	}
+	topicNodes := t.topicTable.RandomNodes(p.Topic, topicNodesResultLimit, func(n *enode.Node) bool {
+		return netutil.CheckRelayIP(fromAddr.IP, n.IP()) == nil
+	})
 	topicResponses := packNodes(topicNodes)
 
 	// Send responses.
