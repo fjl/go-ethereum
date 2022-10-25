@@ -368,7 +368,7 @@ def main():
         directory = sys.argv[1]
 
     config = read_config(directory)
-    network = NetworkLocal(config)
+    network = NetworkLocal()
     run_workload(network, config, directory, config)
 
 if __name__ == "__main__":
