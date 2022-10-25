@@ -8,7 +8,7 @@ import atexit
 from python.header import *
 from python.network import *
 import python.workload_gen as workload
-import python.analyse_logs as analysis
+import python.analyse_logs as analyse_logs
 
 import argparse
 
@@ -18,7 +18,7 @@ def parseArguments():
 
     # Print version
     parser.add_argument("--docker", help="enable docker testbed", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--analysis", help="enable docker testbed", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--analysis", help="run analysis after test", default=True, action=argparse.BooleanOptionalAction)
     parser.add_argument("--config", help="run chosen configuration", type=str)
 
     # Parse arguments
@@ -58,7 +58,7 @@ def run_it(network: Network, params: dict, is_attack=False, analysis=True):
     network.stop()
 
     if analysis:
-        analysis.analyze(out_dir)
+        analyse_logs.analyze(out_dir)
 
 
 def main(args) -> int:
