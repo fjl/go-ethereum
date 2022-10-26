@@ -19,11 +19,11 @@ overview of the available parameters.
 By default, `run_testbed.py` will perform analysis after running the experiment. This can
 be disabled using the `--no-analysis` flag.
 
-Logs and analysis outputs will be written to a directory named after the experiment
-parameters by default. You can override the this directory name using the `--name` flag.
+Logs and analysis outputs will be written to a subdirectoy of `discv5_test_logs/` named
+after the experiment parameters. You can override the name using the `--name` flag.
 
-If you want to re-run the analysis for a past experiment, use the following command
+If you want to re-run analysis for a past experiment, use the following command:
 
 ```
-python -m python.analyse_logs ./discv5_test_logs/<experiment>`
+python -m python.analyse_logs ./discv5_test_logs/<experiment>
 ```
