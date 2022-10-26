@@ -44,7 +44,7 @@ def load_config_file(file):
 
     return config
 
-def create_result_directory(cliargs: argparse.Namespace, params: dict):
+def create_result_directory(cliargs: argparse.Namespace, params: dict,attack):
     if cliargs.name:
         dir_base = cliargs.name
     elif attack:
@@ -58,7 +58,7 @@ def create_result_directory(cliargs: argparse.Namespace, params: dict):
     return dir
 
 def run_it(network: Network, cliargs: argparse.Namespace, params: dict, attack=False):
-    out_dir = create_result_directory(cliargs, params)
+    out_dir = create_result_directory(cliargs, params,attack)
 
     run_testbed(network, out_dir, params)
 
