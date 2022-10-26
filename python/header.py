@@ -11,4 +11,4 @@ features =  {'nodes': {'type': 'benign', 'default': 1000,'defaultAttack': 50, 'v
 }
 
 
-result_dir = '/discv5_test_logs'
+result_dir = 'discv5_test_logs'
