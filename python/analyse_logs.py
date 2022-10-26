@@ -136,14 +136,15 @@ def get_storage_and_advertisement_dist_df(log_path):
 
     for timestamp in times:
         #print ('Timestamp:', timestamp)
-        row = {}
         reg_events = table_size_ot[timestamp]
         for registrar in reg_events.keys():
             table_size[registrar] = reg_events[registrar]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        for node in list(nodes):
+            row = {}
             row['timestamp'] = timestamp
-            row['node'] = registrar
-            row['num_ads_stored'] = table_size[registrar]
+            row['registrar'] = node
+            row['num_ads_stored'] = table_size[node]
             #print('Setting row node', str(node), 'to', table_size[node])
 
             rows_storage.append(row)
@@ -152,14 +153,15 @@ def get_storage_and_advertisement_dist_df(log_path):
     
     for timestamp in times:
         #print ('Timestamp:', timestamp)
-        row = {}
         advert_events = num_adverts_ot[timestamp]
         for advertiser in advert_events.keys():
             num_adverts[advertiser] = advert_events[advertiser]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        for node in list(nodes):
+            row = {}
             row['timestamp'] = timestamp
-            row['node'] = advertiser
-            row['num_ads_registered'] = num_adverts[advertiser]
+            row['advertiser'] = node
+            row['num_ads_registered'] = num_adverts[node]
             #print('Setting row node', str(node), 'to', table_size[node])
 
             rows_ad_dist.append(row)
