@@ -58,7 +58,7 @@ def run_it(network: Network, params: dict, is_attack=False, analysis=True):
     network.stop()
 
     if analysis:
-        analyse_logs.analyze(out_dir)
+        analyse_logs.analyse(out_dir)
 
 
 def main(args) -> int:

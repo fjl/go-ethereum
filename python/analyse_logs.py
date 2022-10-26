@@ -580,17 +580,15 @@ def plot_new(out_dir):
     #plot_storage_per_node_over_time(fig_dir, storage_df)
     #plot_ads_per_node_over_time(fig_dir, advert_dist_df)
 
-def analyze(out_dir):
+def analyse(out_dir):
     create_dfs(out_dir)
     plot_dfs(out_dir)
-
 
 def main():
     directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
-    create_dfs(directory)
-    plot_dfs(directory)
+    analyse(directory)
     #plot_new(directory)
 
 if __name__ == "__main__":
