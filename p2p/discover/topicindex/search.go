@@ -46,16 +46,14 @@ type Search struct {
 	bucketCheck  map[int]struct{}
 	resultBuffer []*enode.Node
 	resultSeen   map[enode.ID]struct{}
-	numResults   int
 
 	queriesWithoutNewNodes int
 }
 
 type searchBucket struct {
-	dist       int
-	new        map[enode.ID]*enode.Node
-	asked      map[enode.ID]struct{}
-	numResults int
+	dist  int
+	new   map[enode.ID]*enode.Node
+	asked map[enode.ID]struct{}
 
 	ips netutil.DistinctNetSet
 }
@@ -143,18 +141,17 @@ func (s *Search) AddNodes(src *enode.Node, nodes []*enode.Node) {
 		bi := s.bucketIndex(n.ID())
 		b := &s.buckets[bi]
 
-		if b.contains(id) {
+		if b.contains(id) || b.count() >= s.cfg.SearchBucketSize {
 			continue
 		}
-		if b.count() >= s.cfg.SearchBucketSize {
-			continue
-		}
+		// Apply one-per-bucket rule.
 		if src != nil {
 			if _, ok := s.bucketCheck[bi]; ok {
 				s.cfg.Log.Debug("Ignoring search node", "id", n.ID(), "reason", "one-per-bucket-rule")
 				continue
 			}
 		}
+		// Apply IP restriction.
 		ip := n.IP()
 		if ip != nil && !netutil.IsLAN(ip) && !b.ips.Add(n.IP()) {
 			s.cfg.Log.Debug("Ignoring search node", "id", n.ID(), "reason", "iplimit")
@@ -193,8 +190,6 @@ func (s *Search) AddQueryResults(from *enode.Node, results []*enode.Node) {
 			continue
 		}
 		s.cfg.Log.Debug("Added topic search result", "topic", s.topic, "fromid", from.ID(), "rid", n.ID())
-		b.numResults++
-		s.numResults++
 		_, seen := s.resultSeen[n.ID()]
 		if !seen {
 			s.resultSeen[n.ID()] = struct{}{}
