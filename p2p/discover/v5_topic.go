@@ -221,10 +221,8 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 			att := reg.state.Update()
 			if att != nil {
 				sendAttemptCh = reg.regRequest
-				nextAttempt = topicRegJob{
-					att:     att,
-					buckets: reg.state.BucketsWithFreeSpace(regtopicNodesLimit * 2),
-				}
+				nextAttempt = topicRegJob{att: att}
+				nextAttempt.buckets = reg.state.BucketsWithFreeSpace(nextAttempt.buckets[:0])
 			}
 
 		// Registration requests.
@@ -407,10 +405,8 @@ func (s *topicSearch) run(state *topicindex.Search) (exit bool) {
 			target := state.QueryTarget()
 			if target != nil {
 				queryCh = s.queryCh
-				nextQuery = topicQueryJob{
-					dst:     target,
-					buckets: state.BucketsWithFreeSpace(regtopicNodesLimit * 2),
-				}
+				nextQuery = topicQueryJob{dst: target}
+				nextQuery.buckets = state.BucketsWithFreeSpace(nextQuery.buckets[:0])
 			}
 		}
 		// Dispatch result when available.

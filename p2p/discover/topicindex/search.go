@@ -116,17 +116,13 @@ func (s *Search) IsDone() bool {
 
 // BucketsWithFreeSpace gives n distances from the topic at which
 // the table has space available.
-func (s *Search) BucketsWithFreeSpace(n int) []uint {
-	result := make([]uint, 0, n)
+func (s *Search) BucketsWithFreeSpace(dists []uint) []uint {
 	for _, b := range s.buckets {
-		if len(result) == n {
-			break
-		}
 		if b.count() < s.cfg.SearchBucketSize {
-			result = append(result, uint(b.dist))
+			dists = append(dists, uint(b.dist))
 		}
 	}
-	return result
+	return dists
 }
 
 // AddNodes adds potential registrars to the table.
