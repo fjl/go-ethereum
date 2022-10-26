@@ -474,7 +474,7 @@ def plot_mean_waiting_time(fig_dir, msg_df):
 
 
 
-def analyze(out_dir):
+def create_dfs(out_dir):
     logs_dir = os.path.join(out_dir, 'logs') + "/"
     fig_dir = os.path.join(out_dir, 'figs') + "/"
 
@@ -483,16 +483,24 @@ def analyze(out_dir):
 
     print('Computing op_df')
     op_df = get_op_df(logs_dir)
-    op_df.to_csv('op_df.csv')
+    op_df.to_csv(fig_dir + '/op_df.csv')
     print('Written to op_df.csv')
 
     print('Computing msg_df')
     msg_df = get_msg_df(logs_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
-    msg_df.to_csv('msg_df.csv')
+    msg_df.to_csv(fig_dir + '/msg_df.csv')
     print('Written to msg_df.csv')
-    return 
-    
+
+    print('Computing storage_df, advert_dist_df')
+    storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
+    storage_df.to_csv(fig_dir + '/storage_df.csv')
+    print('Written to storage_df.csv')
+    advert_dist_df.to_csv(fig_dir + '/advert_dist_df.csv')
+    print("Written to advert_dist_df.csv")
+
+def plot_dfs(op_df, msg_df, out_dir):
+    fig_dir = os.path.join(out_dir, 'figs') + "/"
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
@@ -508,20 +516,59 @@ def analyze(out_dir):
     plot_waiting_time(fig_dir,msg_df)
 
     plot_mean_waiting_time(fig_dir,msg_df)
+    plt.close()
 
-    storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
+def plot_new(out_dir):
+    fig_dir = os.path.join(out_dir, 'figs') + "/"
+    advert_dist_df = pd.read_csv(fig_dir + '/advert_dist_df.csv')
+    storage_df = pd.read_csv(fig_dir + '/storage_df.csv')
+
+
+    means = []
+    errs = []
+    keys = []
+    mins = []
+    maxs = []
+    fig, ax = plt.subplots()
+    for key, group in storage_df.groupby('timestamp'):
+        print("key", key)
+        
+        print("mean", group['num_ads_stored'].mean(), "stderr", group['num_ads_stored'].std())
+        keys.append(key)
+        means.append(group['num_ads_stored'].mean())
+        errs.append(group['num_ads_stored'].std())
+
+        max_val = group['num_ads_stored'].max()
+        min_val = group['num_ads_stored'].min()
+        val_cnt = group['num_ads_stored'].value_counts()
+        print(val_cnt)
+        maxs.append(max_val)
+        mins.append(min_val)
+
+        ax.annotate(val_cnt[max_val], (key, max_val))
+        ax.annotate(val_cnt[min_val], (key, min_val))
+    
+
+    ax.errorbar(keys, means, errs)
+    ax.plot(keys, maxs)
+    ax.plot(keys, mins)
+    
+    plt.show()
+    #print(storage_df)
+    
     # TODO update plotting (ones below won't work anymore) - dataframes have been updated for heat maps
     #plot_storage_per_node_over_time(fig_dir, storage_df)
     #plot_ads_per_node_over_time(fig_dir, advert_dist_df)
 
-    plt.close()
+    
 
 
 def main():
     directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
-    analyze(directory)
+    #create_dfs(directory)
+    plot_new(directory)
 
 if __name__ == "__main__":
     main()
