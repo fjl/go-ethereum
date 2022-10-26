@@ -69,7 +69,7 @@ def get_storage_and_advertisement_dist_df(log_path):
     init_time = None
     num_adverts = {} # {node : number of active adverts by the node}
     num_adverts_ot = {} # {timestamp : {node : number of adverts by the node}}
-  
+
     # Read the registration events in order
     while len(reg_events_heap) > 0:
         timestamp, registrar, adlifetime, advertiser = heapq.heappop(reg_events_heap)
@@ -150,7 +150,7 @@ def get_storage_and_advertisement_dist_df(log_path):
             rows_storage.append(row)
 
     storage_df = pd.DataFrame(rows_storage)
-    
+
     for timestamp in times:
         #print ('Timestamp:', timestamp)
         advert_events = num_adverts_ot[timestamp]
@@ -397,6 +397,7 @@ def plot_times_discovered(fig_dir,op_df):
     axes.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
+
 def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
@@ -496,27 +497,27 @@ def create_dfs(out_dir):
 
     print('Computing op_df')
     op_df = get_op_df(logs_dir)
-    op_df.to_csv(fig_dir + '/op_df.csv')
-    print('Written to op_df.csv')
+    op_df.to_json(fig_dir + '/op_df.json')
+    print('Written to op_df.json')
 
     print('Computing msg_df')
     msg_df = get_msg_df(logs_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
-    msg_df.to_csv(fig_dir + '/msg_df.csv')
-    print('Written to msg_df.csv')
+    msg_df.to_json(fig_dir + '/msg_df.json')
+    print('Written to msg_df.json')
 
     print('Computing storage_df, advert_dist_df')
     storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
-    storage_df.to_csv(fig_dir + '/storage_df.csv')
-    print('Written to storage_df.csv')
-    advert_dist_df.to_csv(fig_dir + '/advert_dist_df.csv')
-    print("Written to advert_dist_df.csv")
+    storage_df.to_json(fig_dir + '/storage_df.json')
+    print('Written to storage_df.json')
+    advert_dist_df.to_json(fig_dir + '/advert_dist_df.json')
+    print("Written to advert_dist_df.json")
 
 def plot_dfs(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
-    msg_df = pd.read_csv(fig_dir + '/msg_df.csv')
-    op_df = pd.read_csv(fig_dir + '/op_df.csv')
-    
+    msg_df = pd.read_json(fig_dir + '/msg_df.json')
+    op_df = pd.read_json(fig_dir + '/op_df.json')
+
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
@@ -536,10 +537,11 @@ def plot_dfs(out_dir):
     plot_mean_waiting_time(fig_dir,msg_df)
     plt.close()
 
+
 def plot_new(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
-    advert_dist_df = pd.read_csv(fig_dir + '/advert_dist_df.csv')
-    storage_df = pd.read_csv(fig_dir + '/storage_df.csv')
+    advert_dist_df = pd.read_csv(fig_dir + '/advert_dist_df.json')
+    storage_df = pd.read_csv(fig_dir + '/storage_df.json')
 
 
     means = []
@@ -550,7 +552,7 @@ def plot_new(out_dir):
     fig, ax = plt.subplots()
     for key, group in storage_df.groupby('timestamp'):
         print("key", key)
-        
+
         print("mean", group['num_ads_stored'].mean(), "stderr", group['num_ads_stored'].std())
         keys.append(key)
         means.append(group['num_ads_stored'].mean())
@@ -565,20 +567,20 @@ def plot_new(out_dir):
 
         ax.annotate(val_cnt[max_val], (key, max_val))
         ax.annotate(val_cnt[min_val], (key, min_val))
-    
+
 
     ax.errorbar(keys, means, errs)
     ax.plot(keys, maxs)
     ax.plot(keys, mins)
-    
+
     plt.show()
     #print(storage_df)
-    
+
     # TODO update plotting (ones below won't work anymore) - dataframes have been updated for heat maps
     #plot_storage_per_node_over_time(fig_dir, storage_df)
     #plot_ads_per_node_over_time(fig_dir, advert_dist_df)
 
-def analyze(out_dir):  
+def analyze(out_dir):
     create_dfs(out_dir)
     plot_dfs(out_dir)
 
