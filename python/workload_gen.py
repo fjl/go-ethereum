@@ -26,7 +26,7 @@ NODE_ID = 0
 OP_ID = 100
 LOGS = queue.Queue()
 
-MAX_REQUEST_THREADS = 128
+MAX_REQUEST_THREADS = 32
 EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
 
 def gen_op_id():
