@@ -94,7 +94,7 @@ type topicReg struct {
 	wg   sync.WaitGroup
 	quit chan struct{}
 
-	regRequest  chan *topicindex.RegAttempt
+	regRequest  chan topicRegJob
 	regResponse chan topicRegResult
 
 	// nodes subscription
@@ -108,7 +108,7 @@ func newTopicReg(sys *topicSystem, topic topicindex.TopicID, opid uint64) *topic
 		clock:       sys.config.Clock,
 		opid:        opid,
 		quit:        make(chan struct{}),
-		regRequest:  make(chan *topicindex.RegAttempt),
+		regRequest:  make(chan topicRegJob),
 		regResponse: make(chan topicRegResult),
 	}
 
@@ -188,8 +188,8 @@ func (reg *topicReg) pause(lastTime mclock.AbsTime) bool {
 func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 	var (
 		updateEv      = mclock.NewAlarm(reg.clock)
-		sendAttempt   *topicindex.RegAttempt
-		sendAttemptCh chan<- *topicindex.RegAttempt
+		nextAttempt   topicRegJob
+		sendAttemptCh chan<- topicRegJob
 	)
 
 	for {
@@ -200,7 +200,7 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 
 		// Disable updates while dispatching the next attempt's request.
 		var updateCh <-chan struct{}
-		if sendAttempt == nil {
+		if sendAttemptCh == nil {
 			next := reg.state.NextUpdateTime()
 			if next != topicindex.Never {
 				updateEv.Schedule(next)
@@ -220,14 +220,17 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 		case <-updateCh:
 			att := reg.state.Update()
 			if att != nil {
-				sendAttempt = att
 				sendAttemptCh = reg.regRequest
+				nextAttempt = topicRegJob{
+					att:     att,
+					buckets: reg.state.BucketsWithFreeSpace(regtopicNodesLimit * 2),
+				}
 			}
 
 		// Registration requests.
-		case sendAttemptCh <- sendAttempt:
-			reg.state.StartRequest(sendAttempt)
-			sendAttempt, sendAttemptCh = nil, nil
+		case sendAttemptCh <- nextAttempt:
+			reg.state.StartRequest(nextAttempt.att)
+			sendAttemptCh = nil
 
 		case resp := <-reg.regResponse:
 			if len(resp.nodes) > 0 {
@@ -250,6 +253,11 @@ func (reg *topicReg) runRegistration(sys *topicSystem) (exit bool) {
 	}
 }
 
+type topicRegJob struct {
+	att     *topicindex.RegAttempt
+	buckets []uint
+}
+
 type topicRegResult struct {
 	msg   *v5wire.Regconfirmation
 	nodes []*enode.Node
@@ -264,11 +272,11 @@ type topicRegResult struct {
 func (reg *topicReg) runRequests(sys *topicSystem) {
 	defer reg.wg.Done()
 
-	for attempt := range reg.regRequest {
-		n := attempt.Node
+	for job := range reg.regRequest {
+		n := job.att.Node
 		topic := reg.state.Topic()
-		resp := sys.transport.regtopic(n, topic, attempt.Ticket, reg.opid)
-		resp.att = attempt
+		resp := sys.transport.regtopic(n, topic, job.att.Ticket, job.buckets, reg.opid)
+		resp.att = job.att
 
 		// Send response to main loop.
 		select {
@@ -288,7 +296,7 @@ type topicSearch struct {
 	wg   sync.WaitGroup
 	quit chan struct{}
 
-	queryCh     chan *enode.Node
+	queryCh     chan topicQueryJob
 	queryRespCh chan topicQueryResult
 	resultCh    chan *enode.Node
 
@@ -305,7 +313,7 @@ func newTopicSearch(sys *topicSystem, topic topicindex.TopicID, out chan *enode.
 		resultCh: out,
 
 		// query
-		queryCh:     make(chan *enode.Node),
+		queryCh:     make(chan topicQueryJob),
 		queryRespCh: make(chan topicQueryResult),
 	}
 
@@ -374,13 +382,18 @@ func (s *topicSearch) pause(lastTime mclock.AbsTime) bool {
 	return false
 }
 
+type topicQueryJob struct {
+	dst     *enode.Node
+	buckets []uint
+}
+
 func (s *topicSearch) run(state *topicindex.Search) (exit bool) {
 	var (
-		queryCh     chan<- *enode.Node
-		queryTarget *enode.Node
-		resultCh    chan<- *enode.Node
-		result      *enode.Node
-		nresults    int
+		queryCh   chan<- topicQueryJob
+		nextQuery topicQueryJob
+		resultCh  chan<- *enode.Node
+		result    *enode.Node
+		nresults  int
 	)
 
 	for {
@@ -390,11 +403,14 @@ func (s *topicSearch) run(state *topicindex.Search) (exit bool) {
 			return false
 		}
 		// Ensure there is always one query running.
-		if queryTarget == nil {
-			t := state.QueryTarget()
-			if t != nil {
+		if queryCh == nil {
+			target := state.QueryTarget()
+			if target != nil {
 				queryCh = s.queryCh
-				queryTarget = t
+				nextQuery = topicQueryJob{
+					dst:     target,
+					buckets: state.BucketsWithFreeSpace(regtopicNodesLimit * 2),
+				}
 			}
 		}
 		// Dispatch result when available.
@@ -409,14 +425,14 @@ func (s *topicSearch) run(state *topicindex.Search) (exit bool) {
 			return true
 
 		// Queries.
-		case queryCh <- queryTarget:
+		case queryCh <- nextQuery:
 		case resp := <-s.queryRespCh:
 			state.AddNodes(resp.src, resp.auxNodes)
 			state.AddQueryResults(resp.src, resp.topicNodes)
 			if resp.err != nil {
 				s.config.Log.Debug("TOPICQUERY/v5 failed", "topic", s.topic, "id", resp.src.ID(), "err", resp.err)
 			}
-			queryTarget, queryCh = nil, nil
+			queryCh = nil
 
 		// Results.
 		case resultCh <- result:
@@ -447,9 +463,9 @@ type topicQueryResult struct {
 func (s *topicSearch) runRequests(sys *topicSystem) {
 	defer s.wg.Done()
 
-	for n := range s.queryCh {
-		result := sys.transport.topicQuery(n, s.topic, s.opid)
-		result.src = n
+	for job := range s.queryCh {
+		result := sys.transport.topicQuery(job.dst, s.topic, job.buckets, s.opid)
+		result.src = job.dst
 
 		// Send response to main loop.
 		select {

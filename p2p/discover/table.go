@@ -440,6 +440,34 @@ func (tab *Table) findnodeByID(target enode.ID, nresults int, preferLive bool) *
 	return nodes
 }
 
+// collectAtDistances finds n nodes matching the check function.
+func (tab *Table) collectOnePerDist(target enode.ID, dists []uint, nresults int) []*enode.Node {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	requested := make(map[uint]struct{})
+	for _, d := range dists {
+		requested[d] = struct{}{}
+	}
+
+	var result []*enode.Node
+	for _, b := range &tab.buckets {
+		for _, n := range b.entries {
+			if len(result) >= nresults || len(requested) == 0 {
+				return result
+			}
+
+			dist := uint(enode.LogDist(target, n.ID()))
+			if _, ok := requested[dist]; !ok {
+				continue
+			}
+			delete(requested, dist)
+			result = append(result, &n.Node)
+		}
+	}
+	return result
+}
+
 // len returns the number of nodes in the table.
 func (tab *Table) len() (n int) {
 	tab.mutex.Lock()

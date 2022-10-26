@@ -17,6 +17,8 @@
 package topicindex
 
 import (
+	"math/rand"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -112,6 +114,22 @@ func (s *Search) IsDone() bool {
 	// No unasked nodes remain. Consider it done when the last
 	// two lookups didn't yield any new nodes.
 	return s.queriesWithoutNewNodes >= 2
+}
+
+// BucketsWithFreeSpace gives n distances from the topic at which
+// the table has space available.
+func (s *Search) BucketsWithFreeSpace(n int) []uint {
+	result := make([]uint, 0, n)
+	for _, i := range rand.Perm(len(s.buckets)) {
+		if len(result) == n {
+			break
+		}
+		b := &s.buckets[i]
+		if b.count() < s.cfg.SearchBucketSize {
+			result = append(result, uint(b.dist))
+		}
+	}
+	return result
 }
 
 // AddNodes adds potential registrars to the table.

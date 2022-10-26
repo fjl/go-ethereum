@@ -19,6 +19,7 @@ package topicindex
 import (
 	"container/heap"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -134,6 +135,22 @@ func (r *Registration) NodeCount() int {
 		}
 	}
 	return sum
+}
+
+// BucketsWithFreeSpace gives n distances from the topic at which
+// the registration table has space available.
+func (r *Registration) BucketsWithFreeSpace(n int) []uint {
+	result := make([]uint, 0, n)
+	for _, i := range rand.Perm(len(r.buckets)) {
+		if len(result) == n {
+			break
+		}
+		b := &r.buckets[i]
+		if b.count[Standby] < r.cfg.RegBucketStandbyLimit {
+			result = append(result, uint(b.dist))
+		}
+	}
+	return result
 }
 
 // AddNodes notifies the registration process about found nodes.

@@ -443,12 +443,13 @@ func (t *UDPv5) findnode(n *enode.Node, distances []uint, opid uint64) ([]*enode
 }
 
 // regtopic sends REGTOPIC to node n and waits for responses.
-func (t *UDPv5) regtopic(n *enode.Node, topic topicindex.TopicID, ticket []byte, opid uint64) topicRegResult {
+func (t *UDPv5) regtopic(n *enode.Node, topic topicindex.TopicID, ticket []byte, buckets []uint, opid uint64) topicRegResult {
 	req := &v5wire.Regtopic{
-		Topic:  topic,
-		Ticket: ticket,
-		ENR:    t.Self().Record(),
-		OpID:   opid,
+		Topic:   topic,
+		Ticket:  ticket,
+		ENR:     t.Self().Record(),
+		Buckets: buckets,
+		OpID:    opid,
 	}
 	c := t.call(n, req, 0)
 	defer t.callDone(c)
@@ -482,8 +483,8 @@ func (t *UDPv5) regtopic(n *enode.Node, topic topicindex.TopicID, ticket []byte,
 }
 
 // topicQuery sends TOPICQUERY and waits for one or more NODES responses.
-func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID, opid uint64) topicQueryResult {
-	req := &v5wire.TopicQuery{Topic: topic, OpID: opid}
+func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID, buckets []uint, opid uint64) topicQueryResult {
+	req := &v5wire.TopicQuery{Topic: topic, Buckets: buckets, OpID: opid}
 	c := t.call(n, req, 0)
 	defer t.callDone(c)
 
@@ -509,7 +510,6 @@ func (t *UDPv5) topicQuery(n *enode.Node, topic topicindex.TopicID, opid uint64)
 				fmt.Println("unhandled", resp)
 			}
 		case err := <-c.err:
-			fmt.Println("error! recvnodes", nodesProc.received, "recvtop", topicProc.received)
 			result.err = err
 		}
 	}
@@ -960,8 +960,8 @@ func (t *UDPv5) collectTableNodes(rip net.IP, distances []uint, limit int) []*en
 // handleTopicQuery serves TOPICQUERY messages.
 func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TopicQuery) {
 	// Collect closest nodes to topic hash.
-	auxNodes := t.tab.findnodeByID(enode.ID(p.Topic), regtopicNodesLimit, true)
-	nodesResponses := packNodes(unwrapNodes(auxNodes.entries))
+	auxNodes := t.tab.collectOnePerDist(enode.ID(p.Topic), p.Buckets, regtopicNodesLimit)
+	nodesResponses := packNodes(auxNodes)
 
 	// Get matching nodes from the topic table.
 	topicNodes := t.topicTable.RandomNodes(p.Topic, topicNodesResultLimit, func(n *enode.Node) bool {
@@ -1038,8 +1038,8 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 	}
 
 	// Collect closest nodes to topic hash.
-	nodes := t.tab.findnodeByID(enode.ID(ticket.Topic), regtopicNodesLimit, true)
-	nodesResponses := packNodes(unwrapNodes(nodes.entries))
+	nodes := t.tab.collectOnePerDist(enode.ID(ticket.Topic), p.Buckets, regtopicNodesLimit)
+	nodesResponses := packNodes(nodes)
 	responseCount := uint8(1 + len(nodesResponses))
 
 	// Attempt to register.

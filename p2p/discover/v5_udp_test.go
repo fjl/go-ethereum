@@ -425,7 +425,7 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 	)
 	go func() {
 		var err error
-		response = test.udp.topicQuery(remote, topic, 0)
+		response = test.udp.topicQuery(remote, topic, []uint{}, 0)
 		done <- err
 	}()
 
