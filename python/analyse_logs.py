@@ -518,6 +518,9 @@ def plot_dfs(out_dir):
     msg_df = pd.read_json(os.path.join(df_dir, 'msg_df.json'))
     op_df = pd.read_json(os.path.join(df_dir, 'op_df.json'))
 
+    if not os.path.exists(fig_dir):
+        os.mkdir(fig_dir)
+        
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
@@ -543,6 +546,9 @@ def plot_new(out_dir):
     df_dir = os.path.join(out_dir, 'dfs')
     advert_dist_df = pd.read_csv(os.path.join(df_dir, 'advert_dist_df.json'))
     storage_df = pd.read_csv(os.path.join(df_dir, 'storage_df.json'))
+
+    if not os.path.exists(fig_dir):
+        os.mkdir(fig_dir)
 
     means = []
     errs = []
