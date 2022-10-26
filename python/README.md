@@ -25,5 +25,5 @@ parameters by default. You can override the this directory name using the `--nam
 If you want to re-run the analysis for a past experiment, use the following command
 
 ```
-python python.analyse_logs ./discv5_test_logs/<experiment>`
+python -m python.analyse_logs ./discv5_test_logs/<experiment>`
 ```
