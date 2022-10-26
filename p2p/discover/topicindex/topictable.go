@@ -213,9 +213,9 @@ func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 	// occupancy is the *inverse* of the table fill-ratio.
 	occupancy := 1.0 - (float64(regCount) / float64(tab.config.AdCacheSize))
 
-	// baseTime is the required wait-time, purely based on occupancy.
-	// When occupancy near 1.0 (i.e. the table is empty), baseTime is
-	// AdLifetime. As the table gets fuller, baseTime goes up.
+	// baseTime is the required wait-time, purely based on occupancy. When occupancy is
+	// near 1.0 (i.e. the table is empty), baseTime is AdLifetime/10. As the table gets
+	// fuller, baseTime goes up and will eventually exceed AdLifetime.
 	baseModifier := 0.1
 	baseTime := baseModifier * tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
 
