@@ -48,6 +48,9 @@ class Network:
 class NetworkLocal(Network):
     proc = []
 
+    node_env = os.environ.copy()
+    node_env['GOMAXPROCS'] = '1'
+
     # node_enr returns the ENR of node n.
     def node_enr(self, path, n):
         port = self.config['udpBasePort'] + n
@@ -79,7 +82,7 @@ class NetworkLocal(Network):
         argv = ["./devp2p", *logflags, "discv5", "listen", *nodeflags]
 
         print("Starting node", str(n))
-        p = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=None)
+        p = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=None, env=self.node_env)
         self.proc.append(p)
 
     def stop(self):
