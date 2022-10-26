@@ -233,9 +233,9 @@ def create_nodeid_index(config_path):
 
     print("Creating node ID index...")
     index = {}
-    for key_file in glob.glob("node-*.key", root_dir=keys_dir):
-        node = int(key_file.split('-')[1].split('.')[0])
-        node_id = nodekey_to_id(os.path.join(keys_dir, key_file))
+    for key_file in glob.glob(os.path.join(keys_dir, "node-*.key")):
+        node = int(os.path.basename(key_file).split('-')[1].split('.')[0])
+        node_id = nodekey_to_id(key_file)
         index[node_id] = node
 
     index_file = os.path.join(keys_dir, "node_id_index.json")
