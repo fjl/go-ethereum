@@ -397,7 +397,6 @@ def plot_times_discovered(fig_dir,op_df):
     axes.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
-
 def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
@@ -418,6 +417,18 @@ def plot_waiting_time(fig_dir,msg_df):
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
 
+
+def plot_times_registered(fig_dir, msg_df):
+    # consider only final REGTOPIC message
+    df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
+    df = df.groupby('peer_id')
+
+    fig, axes = plt.subplots()
+    df['ok'].value_counts().plot(ax=axes, kind='bar')
+    axes.set_xticklabels([])
+    axes.set_xlabel("Advertiser Node")
+    axes.set_ylabel("Successful Registration Count")
+    fig.savefig(fig_dir + 'times_registered.'+form,format=form)
 
 
 def plot_storage_per_node_over_time(fig_dir, storage_df):
@@ -499,6 +510,8 @@ def analyze(out_dir):
     plot_msg_topic(fig_dir,msg_df)
 
     plot_times_discovered(fig_dir,op_df)
+
+    plot_times_registered(fig_dir, msg_df)
 
     plot_search_results(fig_dir,op_df)
 
