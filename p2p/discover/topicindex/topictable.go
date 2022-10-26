@@ -210,13 +210,22 @@ func (tab *TopicTable) topicSize(t TopicID) int {
 func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 	regCount := tab.all.Len()
 
+	// occupancy is the *inverse* of the table fill-ratio.
 	occupancy := 1.0 - (float64(regCount) / float64(tab.config.AdCacheSize))
-	occupancyScore := tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
 
+	// baseTime is the required wait-time, purely based on occupancy.
+	// When occupancy near 1.0 (i.e. the table is empty), baseTime is
+	// AdLifetime. As the table gets fuller, baseTime goes up.
+	baseTime := tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
+
+	// topicMod changes the waiting time based on the ratio of registrations in the
+	// requested topic vs. all topics.
 	topicMod := float64(tab.topicSize(t)) / float64(regCount+1)
+
+	// ipMod changes the waiting time based on IP address diversity.
 	ipMod := tab.wt.ipModifier(n)
 
-	neededTime := occupancyScore * math.Max(topicMod+ipMod, 0.000001)
+	neededTime := baseTime * math.Max(topicMod+ipMod, 0.000001)
 	return time.Duration(math.Ceil(neededTime * float64(time.Second)))
 }
 

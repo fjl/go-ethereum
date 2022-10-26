@@ -136,14 +136,15 @@ def get_storage_and_advertisement_dist_df(log_path):
 
     for timestamp in times:
         #print ('Timestamp:', timestamp)
-        row = {}
         reg_events = table_size_ot[timestamp]
         for registrar in reg_events.keys():
             table_size[registrar] = reg_events[registrar]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        for node in list(nodes):
+            row = {}
             row['timestamp'] = timestamp
-            row['node'] = registrar
-            row['num_ads_stored'] = table_size[registrar]
+            row['registrar'] = node
+            row['num_ads_stored'] = table_size[node]
             #print('Setting row node', str(node), 'to', table_size[node])
 
             rows_storage.append(row)
@@ -152,14 +153,15 @@ def get_storage_and_advertisement_dist_df(log_path):
     
     for timestamp in times:
         #print ('Timestamp:', timestamp)
-        row = {}
         advert_events = num_adverts_ot[timestamp]
         for advertiser in advert_events.keys():
             num_adverts[advertiser] = advert_events[advertiser]
             #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        for node in list(nodes):
+            row = {}
             row['timestamp'] = timestamp
-            row['node'] = advertiser
-            row['num_ads_registered'] = num_adverts[advertiser]
+            row['advertiser'] = node
+            row['num_ads_registered'] = num_adverts[node]
             #print('Setting row node', str(node), 'to', table_size[node])
 
             rows_ad_dist.append(row)
@@ -395,7 +397,6 @@ def plot_times_discovered(fig_dir,op_df):
     axes.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
-
 def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
@@ -416,6 +417,18 @@ def plot_waiting_time(fig_dir,msg_df):
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
 
+
+def plot_times_registered(fig_dir, msg_df):
+    # consider only final REGTOPIC message
+    df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
+    df = df.groupby('peer_id')
+
+    fig, axes = plt.subplots()
+    df['ok'].value_counts().plot(ax=axes, kind='bar')
+    axes.set_xticklabels([])
+    axes.set_xlabel("Advertiser Node")
+    axes.set_ylabel("Successful Registration Count")
+    fig.savefig(fig_dir + 'times_registered.'+form,format=form)
 
 
 def plot_storage_per_node_over_time(fig_dir, storage_df):
@@ -510,6 +523,8 @@ def plot_dfs(op_df, msg_df, out_dir):
     plot_msg_topic(fig_dir,msg_df)
 
     plot_times_discovered(fig_dir,op_df)
+
+    plot_times_registered(fig_dir, msg_df)
 
     plot_search_results(fig_dir,op_df)
 
