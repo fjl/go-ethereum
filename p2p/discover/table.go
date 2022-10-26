@@ -390,7 +390,8 @@ func (tab *Table) nextRefreshTime() time.Duration {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 
-	return tab.cfg.RefreshInterval + time.Duration(tab.rand.Int63n(int64(time.Second)))
+	half := tab.cfg.RefreshInterval / 2
+	return half + time.Duration(tab.rand.Int63n(int64(half)))
 }
 
 // copyLiveNodes adds nodes from the table to the database if they have been in the table
