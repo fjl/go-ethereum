@@ -6,18 +6,13 @@ import time
 import re
 import hashlib
 import traceback
-
 import os.path
 
 import math
 import collections
-
 import numpy as np
 import scipy.stats as ss
-
 import queue
-from python.network import *
-
 import concurrent.futures as futures
 
 from . network import Network, NetworkLocal
@@ -31,7 +26,7 @@ NODE_ID = 0
 OP_ID = 100
 LOGS = queue.Queue()
 
-MAX_REQUEST_THREADS = 128
+MAX_REQUEST_THREADS = 32
 EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
 
 def gen_op_id():
@@ -49,7 +44,7 @@ def write_logs_to_file(fname):
     print("Writing request logs to", fname)
     global LOGS
     LOGS.put(None)
-    with open(fname, 'w+') as f:
+    with open(fname, 'w') as f:
         for data in iter(LOGS.get, None):
             json.dump(data, f)
             f.write("\n")
@@ -352,9 +347,10 @@ def run_workload(network: Network, params, out_dir):
 def wait_for_processes(proc):
     (done, _) = futures.wait(proc)
     for p in done:
-        if p.exception():
+        exc = p.exception()
+        if exc:
             print('error in worker', p)
-            traceback.print_exception(p.exception())
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
 def main():

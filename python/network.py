@@ -4,6 +4,7 @@ import os.path
 import random
 import subprocess
 import time
+import glob
 
 
 # This is the list of config parameters supported by cmd/devp2p.
@@ -165,7 +166,7 @@ class NetworkDocker(Network):
         print('started node', n, 'container:', container_id)
         self.containers.append(container_id)
         #self._config_network(n)
-        
+
     def create_docker_networks(self, nodes):
         for node in range(1,nodes+1):
             network = self._node_network_name(node)
@@ -216,8 +217,46 @@ class NetworkDocker(Network):
         #if p.returncode != 0:
         #    print(p.stderr)
         #    p.check_returncode()
-        
-def create_enrs(network: Network, config_path: str, n: int):
+
+
+def nodekey_to_id(keyfile):
+    argv = ["./devp2p", "key", "to-id", keyfile]
+    p = subprocess.run(argv, capture_output=True, text=True)
+    p.check_returncode()
+    return p.stdout.split('\n')[0]
+
+# create_nodeid_index writes a node_id -> node index file in the logs directory.
+def create_nodeid_index(config_path):
+    keys_dir = os.path.join(config_path, "keys")
+    if not os.path.isdir(keys_dir):
+        raise FileNotFoundError("keys/ directory does not exist: " + keys_dir)
+
+    print("Creating node ID index...")
+    index = {}
+    for key_file in glob.glob(os.path.join(keys_dir, "node-*.key")):
+        node = int(os.path.basename(key_file).split('-')[1].split('.')[0])
+        node_id = nodekey_to_id(key_file)
+        index[node_id] = node
+
+    index_file = os.path.join(keys_dir, "node_id_index.json")
+    with open(index_file, 'w') as f:
+        json.dump(index, f)
+        f.write("\n")
+
+    return index
+
+def load_nodeid_index(config_path):
+    keys_dir = os.path.join(config_path, "keys")
+    index_file = os.path.join(keys_dir, "node_id_index.json")
+
+    if not os.path.isfile(index_file):
+        return create_nodeid_index(config_path)
+
+    with open(index_file, 'r') as f:
+        return json.load(f)
+
+
+def create_enrs(network: Network, config_path, n: int):
     return [ network.node_enr(config_path, node) for node in range(1, n+1) ]
 
 def select_bootnodes(enrs):
@@ -228,6 +267,7 @@ def start_nodes(network: Network, config_path: str, params: dict):
 
     print("Creating ENRs...")
     enrs = create_enrs(network, config_path, n)
+    create_nodeid_index(config_path)
 
     print("Starting", n, "nodes...")
 

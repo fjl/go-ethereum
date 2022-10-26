@@ -206,8 +206,8 @@ func (r *Registration) setAttemptState(att *RegAttempt, state RegAttemptState) {
 // refillAttempts promotes a registrar node from Standby to Waiting.
 // This must be called after every potential attempt state change in the bucket.
 func (r *Registration) refillAttempts(b *regBucket) {
-	if b.count[Waiting] >= r.cfg.RegBucketSize {
-		// Enough attempts in state 'Waiting'.
+	count := b.count[Waiting] + b.count[Registered]
+	if count >= r.cfg.RegBucketSize {
 		return
 	}
 
@@ -216,7 +216,7 @@ func (r *Registration) refillAttempts(b *regBucket) {
 			r.setAttemptState(att, Waiting)
 			att.NextTime = r.cfg.Clock.Now()
 			heap.Push(&r.heap, att)
-			break
+			return
 		}
 	}
 }
@@ -307,7 +307,6 @@ func (r *Registration) HandleRegistered(att *RegAttempt, ttl time.Duration) {
 	r.setAttemptState(att, Registered)
 	att.NextTime = r.cfg.Clock.Now().Add(ttl)
 	heap.Push(&r.heap, att)
-
 	r.refillAttempts(att.bucket)
 }
 
