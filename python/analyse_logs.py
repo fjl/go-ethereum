@@ -759,7 +759,7 @@ def plot_dfs(out_dir):
 
 
 def analyse(out_dir):
-    #create_dfs(out_dir)
+    create_dfs(out_dir)
     plot_dfs(out_dir)
 
 def main():
