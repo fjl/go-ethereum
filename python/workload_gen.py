@@ -352,9 +352,10 @@ def run_workload(network: Network, params, out_dir):
 def wait_for_processes(proc):
     (done, _) = futures.wait(proc)
     for p in done:
-        if p.exception():
+        exc = p.exception()
+        if exc:
             print('error in worker', p)
-            traceback.print_exception(p.exception())
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
 def main():
