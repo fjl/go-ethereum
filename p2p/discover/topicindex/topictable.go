@@ -216,7 +216,8 @@ func (tab *TopicTable) WaitTime(n *enode.Node, t TopicID) time.Duration {
 	// baseTime is the required wait-time, purely based on occupancy.
 	// When occupancy near 1.0 (i.e. the table is empty), baseTime is
 	// AdLifetime. As the table gets fuller, baseTime goes up.
-	baseTime := tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
+	baseModifier := 0.1
+	baseTime := baseModifier * tab.config.AdLifetime.Seconds() / math.Pow(occupancy, occupancyExp)
 
 	// topicMod changes the waiting time based on the ratio of registrations in the
 	// requested topic vs. all topics.
