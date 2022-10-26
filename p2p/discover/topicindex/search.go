@@ -17,8 +17,6 @@
 package topicindex
 
 import (
-	"math/rand"
-
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
@@ -120,11 +118,10 @@ func (s *Search) IsDone() bool {
 // the table has space available.
 func (s *Search) BucketsWithFreeSpace(n int) []uint {
 	result := make([]uint, 0, n)
-	for _, i := range rand.Perm(len(s.buckets)) {
+	for _, b := range s.buckets {
 		if len(result) == n {
 			break
 		}
-		b := &s.buckets[i]
 		if b.count() < s.cfg.SearchBucketSize {
 			result = append(result, uint(b.dist))
 		}
