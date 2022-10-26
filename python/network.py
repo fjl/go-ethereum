@@ -267,7 +267,7 @@ def start_nodes(network: Network, config_path: str, params: dict):
 
     print("Creating ENRs...")
     enrs = create_enrs(network, config_path, n)
-    create_node_index(config_path, n)
+    create_nodeid_index(config_path)
 
     print("Starting", n, "nodes...")
 
