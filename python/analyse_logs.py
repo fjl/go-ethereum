@@ -477,6 +477,37 @@ def plot_mean_waiting_time(fig_dir, msg_df):
     ax.set_ylabel("Average received waiting time")
     fig.savefig(fig_dir + 'waiting_time_recv_avg.'+form, format=form)
 
+
+def plot_ads(fig_dir, storage_df: pd.DataFrame, advert_dist_df: pd.DataFrame):
+    for df, feature in [(storage_df, "num_ads_stored"), (advert_dist_df, 'num_ads_registered')]:
+        means = []
+        errs = []
+        keys = []
+        mins = []
+        maxs = []
+        fig, ax = plt.subplots()
+        for key, group in df.groupby('timestamp'):
+            keys.append(key)
+            means.append(group[feature].mean())
+            #errs.append(group['num_ads_stored'].std())
+            errs.append(0)
+
+            max_val = group[feature].max()
+            min_val = group[feature].min()
+            val_cnt = group[feature].value_counts()
+            #print(val_cnt)
+            maxs.append(max_val)
+            mins.append(min_val)
+
+            #ax.annotate(val_cnt[max_val], (key, max_val))
+            #ax.annotate(val_cnt[min_val], (key, min_val))
+        ax.errorbar(keys, means, errs)
+        ax.plot(keys, maxs)
+        ax.plot(keys, mins)
+        ax.set_title(feature)
+        fig.savefig(fig_dir + feature+'.'+form, format=form)
+
+
 #storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(log_path)
 #print('Storage_df:', storage_df)
 #plot_storage_per_node_over_time('./', storage_df)
@@ -549,54 +580,15 @@ def plot_dfs(out_dir):
     plot_waiting_time(fig_dir,msg_df)
 
     plot_mean_waiting_time(fig_dir,msg_df)
+
+    print("Reading storage dfs")
+    advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
+    storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
+
+    plot_ads(fig_dir, storage_df, advert_dist_df)
+
     plt.close()
 
-
-def plot_new(out_dir):
-    fig_dir = os.path.join(out_dir, 'figs') + "/"
-    df_dir = os.path.join(out_dir, 'dfs')
-    advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
-    print("Reading storage df")
-    storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
-    print(storage_df)
-    print(advert_dist_df)
-
-    if not os.path.exists(fig_dir):
-        os.mkdir(fig_dir)
-
-    for df, feature in [(storage_df, "num_ads_stored"), (advert_dist_df, 'num_ads_registered')]:
-        means = []
-        errs = []
-        keys = []
-        mins = []
-        maxs = []
-        fig, ax = plt.subplots()
-        for key, group in df.groupby('timestamp'):
-            keys.append(key)
-            means.append(group[feature].mean())
-            #errs.append(group['num_ads_stored'].std())
-            errs.append(0)
-
-            max_val = group[feature].max()
-            min_val = group[feature].min()
-            val_cnt = group[feature].value_counts()
-            #print(val_cnt)
-            maxs.append(max_val)
-            mins.append(min_val)
-
-            #ax.annotate(val_cnt[max_val], (key, max_val))
-            #ax.annotate(val_cnt[min_val], (key, min_val))
-        ax.errorbar(keys, means, errs)
-        ax.plot(keys, maxs)
-        ax.plot(keys, mins)
-        ax.set_title(feature)
-
-    plt.show()
-    #print(storage_df)
-
-    # TODO update plotting (ones below won't work anymore) - dataframes have been updated for heat maps
-    #plot_storage_per_node_over_time(fig_dir, storage_df)
-    #plot_ads_per_node_over_time(fig_dir, advert_dist_df)
 
 def analyse(out_dir):
     create_dfs(out_dir)
@@ -606,8 +598,7 @@ def main():
     directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
-    #analyse(directory)
-    plot_new(directory)
+    analyse(directory)
 
 if __name__ == "__main__":
     main()
