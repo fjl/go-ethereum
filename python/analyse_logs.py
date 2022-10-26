@@ -21,6 +21,160 @@ form = 'pdf'
 #config_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5"
 config_path = "../discv5-test"
 
+def get_storage_and_advertisement_dist_for_heatmap(config_path):
+    log_path = os.path.join(config_path, 'logs')
+    node_id_index = load_nodeid_index(config_path)
+
+    topic_mapping = {} #reverse engineer the topic hash
+    for i in range(1, 1000):
+        topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
+    ad_expiry_heap = []
+    reg_events_heap = []
+    nodes = set()
+
+    # Read all the registration events and add them to a heap
+    for log_file in os.listdir(log_path):
+        if (not log_file.startswith("node-")):
+            continue
+        print("Reading", log_file)
+        registrar = int(log_file.split('-')[1].split('.')[0]) #node-10.log
+        nodes.add(registrar)
+
+        for line in open(os.path.join(log_path, log_file), 'r').readlines():
+            if(line[0] != '{'):
+                #not a json line
+                continue
+            jsons = json.loads(line)
+
+            if('adlifetime' not in jsons):
+                continue
+            msg_type = jsons['msg'].split(' ')[1]
+            if msg_type != 'REGCONFIRMATION/v5':
+                continue
+            in_out_s = jsons['msg'].split(' ')[0]
+            if(in_out_s != '>>'):
+                continue
+            ok = jsons['ok']
+            if (ok != 'true'):
+                continue
+
+            adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
+            advertiser = node_id_index[jsons['id']]
+
+            if(registrar == advertiser):
+                print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
+            # parse time
+            dt = parse(jsons['t'])
+            unix_time = int(time.mktime(dt.timetuple()))
+
+            heapq.heappush(reg_events_heap, (unix_time, registrar, adlifetime, advertiser))
+
+
+    table_size = {} # {node : node's table size}
+    table_size_ot = {} # {timestamp : { node : node's table size} }
+    init_time = None
+    num_adverts = {} # {node : number of active adverts by the node}
+    num_adverts_ot = {} # {timestamp : {node : number of adverts by the node}}
+
+    # Read the registration events in order
+    while len(reg_events_heap) > 0:
+        timestamp, registrar, adlifetime, advertiser = heapq.heappop(reg_events_heap)
+
+        # the first event will have timestamp of 0
+        if init_time is None:
+            init_time = timestamp
+            timestamp = 0
+        else:
+            timestamp -= init_time
+
+        #print("Registration event at Registrar: ", registrar, "at time:", timestamp, "by advertiser:", advertiser)
+
+        while len(ad_expiry_heap) > 0:
+            tupl = ad_expiry_heap[0]
+            expiry_time = tupl[0]
+
+            if(expiry_time is not None and expiry_time <= timestamp):
+                expiry_time, expRegistrar, expAdvertiser = heapq.heappop(ad_expiry_heap)
+                table_size[expRegistrar] = table_size[expRegistrar] - 1
+                num_adverts[expAdvertiser] = num_adverts[expAdvertiser] - 1
+                if expiry_time not in table_size_ot.keys():
+                    table_size_ot[expiry_time] = {}
+                if expiry_time not in num_adverts_ot.keys():
+                    num_adverts_ot[expiry_time] = {}
+
+                table_size_ot[expiry_time][expRegistrar] = table_size[expRegistrar]
+                num_adverts_ot[expiry_time][expAdvertiser] = num_adverts[expAdvertiser]
+                #print('Ad expiration  at registrar: ', node, 'at time:', expiry_time, 'setting table size to', table_size[node])
+            else:
+                break
+
+        if registrar not in table_size.keys():
+            table_size[registrar] = 1
+        else:
+            table_size[registrar] = table_size[registrar] + 1
+
+        if advertiser not in num_adverts.keys():
+            num_adverts[advertiser] = 1
+        else:
+            num_adverts[advertiser] = num_adverts[advertiser] + 1
+
+        if timestamp not in table_size_ot.keys():
+            table_size_ot[timestamp] = {}
+        table_size_ot[timestamp][registrar] = table_size[registrar]
+
+        if timestamp not in num_adverts_ot.keys():
+            num_adverts_ot[timestamp] = {}
+        num_adverts_ot[timestamp][advertiser] = num_adverts[advertiser]
+
+        #print('Timestamp:', timestamp, 'registrar:', registrar, 'size:', table_size[registrar], 'adlifetime:', adlifetime)
+        heapq.heappush(ad_expiry_heap, (timestamp + adlifetime, registrar, advertiser))
+
+    rows_storage = []
+    rows_ad_dist = []
+    times = list(table_size_ot.keys())
+    times = sorted(times)
+    #print('table_size_ot: ', table_size_ot)
+    table_size = {}
+    for node in list(nodes):
+        table_size[node] = 0
+        num_adverts[node] = 0
+    #print('nodes:', list(nodes))
+
+    for timestamp in times:
+        #print ('Timestamp:', timestamp)
+        reg_events = table_size_ot[timestamp]
+        for registrar in reg_events.keys():
+            table_size[registrar] = reg_events[registrar]
+            #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        row = {}
+        row['timestamp'] = timestamp
+        for node in list(nodes):
+            row['node' + str(node)] = table_size[node]
+            #print('Setting row node', str(node), 'to', table_size[node])
+
+        rows_storage.append(row)
+
+    storage_df = pd.DataFrame(rows_storage)
+
+    for timestamp in times:
+        #print ('Timestamp:', timestamp)
+        advert_events = num_adverts_ot[timestamp]
+        for advertiser in advert_events.keys():
+            num_adverts[advertiser] = advert_events[advertiser]
+            #print('setting registar', registrar, 'table size to', reg_events[registrar])
+        row = {}
+        row['timestamp'] = timestamp
+        for node in list(nodes):
+            row['node'+str(node)] = num_adverts[node]
+            #print('Setting row node', str(node), 'to', table_size[node])
+
+        rows_ad_dist.append(row)
+
+    ad_dist_df = pd.DataFrame(rows_ad_dist)
+
+    return storage_df, ad_dist_df
+
+
 def get_storage_and_advertisement_dist_df(config_path):
     log_path = os.path.join(config_path, 'logs')
     node_id_index = load_nodeid_index(config_path)
@@ -452,6 +606,13 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
     lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
+def plot_storage_heatmap(fig_dir, storage_df):
+    fig, axes = plt.subplots()
+    storage_df = storage_df.set_index('timestamp') 
+    plt.figure(figsize=(15,15)) # large figure to display all the nodes in the y axis
+    sns.heatmap(storage_df.T, cmap='plasma', xticklabels=60)
+    plt.savefig(fig_dir + 'storage_time_heatmap.'+form,format=form)
+
 def plot_ads_per_node_over_time(fig_dir, adverts_df):
     fig, axes = plt.subplots()
     axes.set_xlabel("Time (msec)")
@@ -552,6 +713,10 @@ def create_dfs(out_dir):
     advert_dist_df.to_json(os.path.join(df_dir, 'advert_dist_df.json'))
     print("Written to advert_dist_df.json")
 
+    storage_df_heatmap, advert_df_heatmap = get_storage_and_advertisement_dist_for_heatmap(out_dir)
+    storage_df_heatmap.to_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
+    advert_df_heatmap.to_json(os.path.join(df_dir, 'advert_heatmap_df.json'))
+
 
 # plot_dfs loads and creates plots out of the analysis data frames.
 def plot_dfs(out_dir):
@@ -587,11 +752,14 @@ def plot_dfs(out_dir):
 
     plot_ads(fig_dir, storage_df, advert_dist_df)
 
+    storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
+    plot_storage_heatmap(fig_dir, storage_df_heatmap)
+
     plt.close()
 
 
 def analyse(out_dir):
-    create_dfs(out_dir)
+    #create_dfs(out_dir)
     plot_dfs(out_dir)
 
 def main():
