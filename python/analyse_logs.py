@@ -13,12 +13,18 @@ import heapq # to sort register removal events
 import time
 import concurrent.futures
 
-#log_path = "./discv5-test/logs"
-#log_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5/logs/"
-form = 'pdf'
-log_path = "../discv5-test/logs"
+from . network import load_nodeid_index
 
-def get_storage_and_advertisement_dist_df(log_path):
+form = 'pdf'
+
+#config_path = "./discv5-test"
+#config_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5"
+config_path = "../discv5-test"
+
+def get_storage_and_advertisement_dist_df(config_path):
+    log_path = os.path.join(config_path, 'logs')
+    node_id_index = load_nodeid_index(config_path)
+
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 1000):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
@@ -34,7 +40,7 @@ def get_storage_and_advertisement_dist_df(log_path):
         registrar = int(log_file.split('-')[1].split('.')[0]) #node-10.log
         nodes.add(registrar)
 
-        for line in open(log_path + '/' + log_file, 'r').readlines():
+        for line in open(os.path.join(log_path, log_file), 'r').readlines():
             if(line[0] != '{'):
                 #not a json line
                 continue
@@ -53,7 +59,7 @@ def get_storage_and_advertisement_dist_df(log_path):
                 continue
 
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
-            advertiser = int(jsons['addr'].split(':')[1]) - 30200
+            advertiser = node_id_index[jsons['id']]
 
             if(registrar == advertiser):
                 print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
@@ -171,7 +177,10 @@ def get_storage_and_advertisement_dist_df(log_path):
     return storage_df, ad_dist_df
 
 
-def get_msg_df(log_path, op_df):
+def get_msg_df(config_path, op_df):
+    log_path = os.path.join(config_path, "logs")
+    node_id_index = load_nodeid_index(config_path)
+
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
@@ -191,7 +200,7 @@ def get_msg_df(log_path, op_df):
                 continue
             print("Reading", log_file)
             fname = os.path.join(log_path, log_file)
-            rows_f.append(executor.submit(parse_msg_logs, fname, topic_mapping, op_info))
+            rows_f.append(executor.submit(parse_msg_logs, fname, topic_mapping, op_info, node_id_index))
 
         # concatenate parsing results
         for f in concurrent.futures.as_completed(rows_f):
@@ -223,17 +232,16 @@ def assign_missing_op_info(rows: list, op_info: dict):
     return rows
 
 
-def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict):
+def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict, node_id_index: dict):
     rows = []
-    def process_message(node_id, jsons):
+    def process_message(node_id: int, jsons: dict):
          msg = jsons['msg']
          if not msg.startswith('>> '):
              return # it's not a message sent between peers
 
          row = {
              'node_id': node_id,
-             # get peer ID from the port number
-             'peer_id': int(jsons['addr'].split(':')[1]) - 30200,
+             'peer_id': node_id_index[jsons['id']],
              'timestamp': parse(jsons['t']),
              'msg_type': msg.split(' ')[1].split(':')[0],
          }
@@ -274,13 +282,15 @@ def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict):
     return rows
 
 
-def get_op_df(log_path):
+def get_op_df(config_path):
+    log_path = os.path.join(config_path, "logs")
+
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 100):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
 
     operations = {} #indexed by opid
-    for line in open(log_path + '/logs.json', 'r').readlines():
+    for line in open(os.path.join(log_path, 'logs.json'), 'r').readlines():
         #not a json line
         if(line[0] != '{'):
             continue
@@ -487,31 +497,32 @@ def plot_mean_waiting_time(fig_dir, msg_df):
 #print(df['in_out'].value_counts())
 
 
-
+# create_dfs computes and stores the analysis data frames.
 def create_dfs(out_dir):
-    logs_dir = os.path.join(out_dir, 'logs') + "/"
     df_dir = os.path.join(out_dir, 'dfs')
     if not os.path.exists(df_dir):
         os.mkdir(df_dir)
 
     print('Computing op_df')
-    op_df = get_op_df(logs_dir)
+    op_df = get_op_df(out_dir)
     op_df.to_json(os.path.join(df_dir, 'op_df.json'))
     print('Written to op_df.json')
 
     print('Computing msg_df')
-    msg_df = get_msg_df(logs_dir, op_df)
+    msg_df = get_msg_df(out_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
     msg_df.to_json(os.path.join(df_dir, 'msg_df.json'))
     print('Written to msg_df.json')
 
     print('Computing storage_df, advert_dist_df')
-    storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
+    storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(out_dir)
     storage_df.to_json(os.path.join(df_dir, 'storage_df.json'))
     print('Written to storage_df.json')
     advert_dist_df.to_json(os.path.join(df_dir, 'advert_dist_df.json'))
     print("Written to advert_dist_df.json")
 
+
+# plot_dfs loads and creates plots out of the analysis data frames.
 def plot_dfs(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
     df_dir = os.path.join(out_dir, 'dfs')
@@ -520,7 +531,7 @@ def plot_dfs(out_dir):
 
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
-        
+
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
