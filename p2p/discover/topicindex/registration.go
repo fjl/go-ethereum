@@ -136,6 +136,17 @@ func (r *Registration) NodeCount() int {
 	return sum
 }
 
+// BucketsWithFreeSpace appends distances (to the topic) at which
+// the table has space available.
+func (r *Registration) BucketsWithFreeSpace(dists []uint) []uint {
+	for _, b := range r.buckets {
+		if b.count[Standby] < r.cfg.RegBucketStandbyLimit {
+			dists = append(dists, uint(b.dist))
+		}
+	}
+	return dists
+}
+
 // AddNodes notifies the registration process about found nodes.
 //
 // 'src' is the source of the nodes.

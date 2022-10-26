@@ -63,7 +63,9 @@ func nodeAtDistance(base enode.ID, ld int, ip net.IP) *node {
 func nodesAtDistance(base enode.ID, ld int, n int) []*enode.Node {
 	results := make([]*enode.Node, n)
 	for i := range results {
-		results[i] = unwrapNode(nodeAtDistance(base, ld, intIP(i)))
+		ip := intIP(i)
+		ip[2] = uint8(ld % 256)
+		results[i] = unwrapNode(nodeAtDistance(base, ld, ip))
 	}
 	return results
 }
@@ -109,7 +111,7 @@ func idAtDistance(a enode.ID, n int) (b enode.ID) {
 }
 
 func intIP(i int) net.IP {
-	return net.IP{byte(i), 0, 2, byte(i)}
+	return net.IP{byte(i), 0, 1, byte(i)}
 }
 
 // fillBucket inserts nodes into the given bucket until it is full.
@@ -201,6 +203,14 @@ func hasDuplicates(slice []*node) bool {
 		seen[e.ID()] = true
 	}
 	return false
+}
+
+func concatNodes(slices ...[]*enode.Node) []*enode.Node {
+	var result []*enode.Node
+	for _, s := range slices {
+		result = append(result, s...)
+	}
+	return result
 }
 
 // checkNodesEqual checks whether the two given node lists contain the same nodes.

@@ -130,6 +130,10 @@ type (
 		Ticket []byte
 		ENR    *enr.Record
 
+		// Buckets contains the distances from the topic where the
+		// requesting node still has space in its search table.
+		Buckets []uint
+
 		// OpID is for debugging purposes and is not part of the packet encoding.
 		// It identifies the 'operation' on behalf of which the request was sent.
 		OpID uint64 `rlp:"-"`
@@ -151,6 +155,10 @@ type (
 	TopicQuery struct {
 		ReqID []byte
 		Topic [32]byte
+
+		// Buckets contains the distances from the topic where the
+		// requesting node still has space in its search table.
+		Buckets []uint
 
 		// OpID is for debugging purposes and is not part of the packet encoding.
 		// It identifies the 'operation' on behalf of which the request was sent.

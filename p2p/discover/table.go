@@ -440,6 +440,37 @@ func (tab *Table) findnodeByID(target enode.ID, nresults int, preferLive bool) *
 	return nodes
 }
 
+// collectAtDistances finds n nodes matching the check function.
+func (tab *Table) collectOnePerDist(target enode.ID, dists []uint, nresults int, check func(*node) bool) []*enode.Node {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	requested := make(map[uint]struct{})
+	for _, d := range dists {
+		requested[d] = struct{}{}
+	}
+
+	result := &genericNodesByDistance[*enode.Node]{target: target}
+	for _, b := range &tab.buckets {
+		for _, n := range b.entries {
+			if len(requested) == 0 {
+				return result.entries
+			}
+
+			dist := uint(enode.LogDist(target, n.ID()))
+			if _, ok := requested[dist]; !ok {
+				continue
+			}
+			if !check(n) {
+				continue
+			}
+			delete(requested, dist)
+			result.push(&n.Node, nresults)
+		}
+	}
+	return result.entries
+}
+
 // len returns the number of nodes in the table.
 func (tab *Table) len() (n int) {
 	tab.mutex.Lock()
@@ -683,13 +714,20 @@ func deleteNode(list []*node, n *node) []*node {
 }
 
 // nodesByDistance is a list of nodes, ordered by distance to target.
-type nodesByDistance struct {
-	entries []*node
+type nodesByDistance = genericNodesByDistance[*node]
+
+type hasID interface {
+	ID() enode.ID
+}
+
+// nodesByDistance is a list of nodes, ordered by distance to target.
+type genericNodesByDistance[Node hasID] struct {
+	entries []Node
 	target  enode.ID
 }
 
 // push adds the given node to the list, keeping the total size below maxElems.
-func (h *nodesByDistance) push(n *node, maxElems int) {
+func (h *genericNodesByDistance[Node]) push(n Node, maxElems int) {
 	ix := sort.Search(len(h.entries), func(i int) bool {
 		return enode.DistCmp(h.target, h.entries[i].ID(), n.ID()) > 0
 	})
