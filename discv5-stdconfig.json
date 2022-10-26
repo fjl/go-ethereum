@@ -1,13 +1,15 @@
 {
-    "nodes": 100,
-    "lookupTime": 120,
+    "topic": 20,
+    "nodes": 500,
+    "lookupTime": 300,
+    "searchIterations": 3,
 
     "pingInterval": 10,
     "bucketRefreshInterval": 120,
     "adCacheSize": 500,
     "adLifetimeSeconds": 60,
-    "regBucketSize": 5,
-    "regBucketStandbySize": 20,
+    "regBucketSize": 10,
+    "regBucketStandbySize": 10,
     "searchBucketSize": 5,
 
     "rpcSearchTimeoutSeconds": 120
