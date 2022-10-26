@@ -399,13 +399,24 @@ def plot_msg_op_topic(fig_dir,msg_df):
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
-    fig, axes = plt.subplots()
-    op_df_exploded['result'].value_counts().plot(ax = axes,kind='bar')
-    axes.set_xticklabels([])
-    axes.set_xlabel("Discovered Nodes")
-    axes.set_ylabel("Count")
-    axes.set_yticks(list(op_df_exploded['result'].value_counts()))
+    op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch'] 
+
+    fig, ax = plt.subplots()
+    counter = 0
+    offset = 0
+    for topic, group in op_df_exploded.groupby('topic'):
+        print(topic, group)
+        y = group['result'].value_counts().to_dict().values()
+
+        ax.bar(list(range(offset, offset + len(y))), y)
+        offset += len(y)
+        counter += 1
+    ax.set_xticklabels([])
+    ax.set_xlabel("Discovered Nodes")
+    ax.set_ylabel("Count")
+    ax.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
+    plt.show()
 
 
 def plot_search_results(fig_dir,op_df):
@@ -563,23 +574,23 @@ def plot_dfs(out_dir):
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
 
-    plot_operation_returned(fig_dir,op_df)
+    #plot_operation_returned(fig_dir,op_df)
 
-    plot_operation_times(fig_dir,op_df)
+    #plot_operation_times(fig_dir,op_df)
 
-    plot_msg_operation(fig_dir, msg_df)
+    #plot_msg_operation(fig_dir, msg_df)
 
-    plot_msg_topic(fig_dir,msg_df)
+    #plot_msg_topic(fig_dir,msg_df)
 
     plot_times_discovered(fig_dir,op_df)
 
-    plot_times_registered(fig_dir, msg_df)
+    #plot_times_registered(fig_dir, msg_df)
 
-    plot_search_results(fig_dir,op_df)
+    #plot_search_results(fig_dir,op_df)
 
-    plot_waiting_time(fig_dir,msg_df)
+    #plot_waiting_time(fig_dir,msg_df)
 
-    plot_mean_waiting_time(fig_dir,msg_df)
+    #plot_mean_waiting_time(fig_dir,msg_df)
 
     print("Reading storage dfs")
     advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
@@ -591,7 +602,7 @@ def plot_dfs(out_dir):
 
 
 def analyse(out_dir):
-    create_dfs(out_dir)
+    #create_dfs(out_dir)
     plot_dfs(out_dir)
 
 def main():
