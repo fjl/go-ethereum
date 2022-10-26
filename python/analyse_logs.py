@@ -490,33 +490,33 @@ def plot_mean_waiting_time(fig_dir, msg_df):
 
 def create_dfs(out_dir):
     logs_dir = os.path.join(out_dir, 'logs') + "/"
-    fig_dir = os.path.join(out_dir, 'figs') + "/"
-
-    if not os.path.exists(fig_dir):
-        os.mkdir(fig_dir)
+    df_dir = os.path.join(out_dir, 'dfs')
+    if not os.path.exists(df_dir):
+        os.mkdir(df_dir)
 
     print('Computing op_df')
     op_df = get_op_df(logs_dir)
-    op_df.to_json(fig_dir + '/op_df.json')
+    op_df.to_json(os.path.join(df_dir, 'op_df.json'))
     print('Written to op_df.json')
 
     print('Computing msg_df')
     msg_df = get_msg_df(logs_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
-    msg_df.to_json(fig_dir + '/msg_df.json')
+    msg_df.to_json(os.path.join(df_dir, 'msg_df.json'))
     print('Written to msg_df.json')
 
     print('Computing storage_df, advert_dist_df')
     storage_df, advert_dist_df = get_storage_and_advertisement_dist_df(logs_dir)
-    storage_df.to_json(fig_dir + '/storage_df.json')
+    storage_df.to_json(os.path.join(df_dir, 'storage_df.json'))
     print('Written to storage_df.json')
-    advert_dist_df.to_json(fig_dir + '/advert_dist_df.json')
+    advert_dist_df.to_json(os.path.join(df_dir, 'advert_dist_df.json'))
     print("Written to advert_dist_df.json")
 
 def plot_dfs(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
-    msg_df = pd.read_json(fig_dir + '/msg_df.json')
-    op_df = pd.read_json(fig_dir + '/op_df.json')
+    df_dir = os.path.join(out_dir, 'dfs')
+    msg_df = pd.read_json(os.path.join(df_dir, 'msg_df.json'))
+    op_df = pd.read_json(os.path.join(df_dir, 'op_df.json'))
 
     plot_operation_returned(fig_dir,op_df)
 
@@ -540,9 +540,9 @@ def plot_dfs(out_dir):
 
 def plot_new(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
-    advert_dist_df = pd.read_csv(fig_dir + '/advert_dist_df.json')
-    storage_df = pd.read_csv(fig_dir + '/storage_df.json')
-
+    df_dir = os.path.join(out_dir, 'dfs')
+    advert_dist_df = pd.read_csv(os.path.join(df_dir, 'advert_dist_df.json'))
+    storage_df = pd.read_csv(os.path.join(df_dir, 'storage_df.json'))
 
     means = []
     errs = []
