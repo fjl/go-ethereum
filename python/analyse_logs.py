@@ -544,40 +544,41 @@ def plot_dfs(out_dir):
 def plot_new(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
     df_dir = os.path.join(out_dir, 'dfs')
-    advert_dist_df = pd.read_csv(os.path.join(df_dir, 'advert_dist_df.json'))
-    storage_df = pd.read_csv(os.path.join(df_dir, 'storage_df.json'))
+    advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
+    print("Reading storage df")
+    storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
+    print(storage_df)
+    print(advert_dist_df)
 
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
 
-    means = []
-    errs = []
-    keys = []
-    mins = []
-    maxs = []
-    fig, ax = plt.subplots()
-    for key, group in storage_df.groupby('timestamp'):
-        print("key", key)
+    for df, feature in [(storage_df, "num_ads_stored"), (advert_dist_df, 'num_ads_registered')]:
+        means = []
+        errs = []
+        keys = []
+        mins = []
+        maxs = []
+        fig, ax = plt.subplots()
+        for key, group in df.groupby('timestamp'):
+            keys.append(key)
+            means.append(group[feature].mean())
+            #errs.append(group['num_ads_stored'].std())
+            errs.append(0)
 
-        print("mean", group['num_ads_stored'].mean(), "stderr", group['num_ads_stored'].std())
-        keys.append(key)
-        means.append(group['num_ads_stored'].mean())
-        errs.append(group['num_ads_stored'].std())
+            max_val = group[feature].max()
+            min_val = group[feature].min()
+            val_cnt = group[feature].value_counts()
+            #print(val_cnt)
+            maxs.append(max_val)
+            mins.append(min_val)
 
-        max_val = group['num_ads_stored'].max()
-        min_val = group['num_ads_stored'].min()
-        val_cnt = group['num_ads_stored'].value_counts()
-        print(val_cnt)
-        maxs.append(max_val)
-        mins.append(min_val)
-
-        ax.annotate(val_cnt[max_val], (key, max_val))
-        ax.annotate(val_cnt[min_val], (key, min_val))
-
-
-    ax.errorbar(keys, means, errs)
-    ax.plot(keys, maxs)
-    ax.plot(keys, mins)
+            #ax.annotate(val_cnt[max_val], (key, max_val))
+            #ax.annotate(val_cnt[min_val], (key, min_val))
+        ax.errorbar(keys, means, errs)
+        ax.plot(keys, maxs)
+        ax.plot(keys, mins)
+        ax.set_title(feature)
 
     plt.show()
     #print(storage_df)
@@ -594,8 +595,8 @@ def main():
     directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
-    analyse(directory)
-    #plot_new(directory)
+    #analyse(directory)
+    plot_new(directory)
 
 if __name__ == "__main__":
     main()
