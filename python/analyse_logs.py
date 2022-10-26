@@ -549,7 +549,6 @@ def plot_msg_op_topic(fig_dir,msg_df):
     fig, ax = plt.subplots()
 
     for op_type, group_op_type in msg_df.groupby('op_type'):
-        print(op_type)
         fig, ax = plt.subplots()
         group_op_type['topic'].value_counts().plot(kind='bar', title=op_type)
         ax.set_ylabel("#Messages")
@@ -565,7 +564,6 @@ def plot_times_discovered(fig_dir,op_df):
     counter = 0
     offset = 0
     for topic, group in op_df_exploded.groupby('topic'):
-        print(topic, group)
         y = group['result'].value_counts().to_dict().values()
 
         ax.bar(list(range(offset, offset + len(y))), y)
