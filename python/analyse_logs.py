@@ -512,8 +512,11 @@ def create_dfs(out_dir):
     advert_dist_df.to_csv(fig_dir + '/advert_dist_df.csv')
     print("Written to advert_dist_df.csv")
 
-def plot_dfs(op_df, msg_df, out_dir):
+def plot_dfs(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
+    msg_df = pd.read_csv(fig_dir + '/msg_df.csv')
+    op_df = pd.read_csv(fig_dir + '/op_df.csv')
+    
     plot_operation_returned(fig_dir,op_df)
 
     plot_operation_times(fig_dir,op_df)
@@ -582,8 +585,9 @@ def main():
     directory = "../discv5-test"
     if len(sys.argv) > 1:
         directory = sys.argv[1]
-    #create_dfs(directory)
-    plot_new(directory)
+    create_dfs(directory)
+    plot_dfs(directory)
+    #plot_new(directory)
 
 if __name__ == "__main__":
     main()
