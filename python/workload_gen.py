@@ -6,18 +6,13 @@ import time
 import re
 import hashlib
 import traceback
-
 import os.path
 
 import math
 import collections
-
 import numpy as np
 import scipy.stats as ss
-
 import queue
-from python.network import *
-
 import concurrent.futures as futures
 
 from . network import Network, NetworkLocal
@@ -49,7 +44,7 @@ def write_logs_to_file(fname):
     print("Writing request logs to", fname)
     global LOGS
     LOGS.put(None)
-    with open(fname, 'w+') as f:
+    with open(fname, 'w') as f:
         for data in iter(LOGS.get, None):
             json.dump(data, f)
             f.write("\n")
