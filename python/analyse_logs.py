@@ -570,7 +570,6 @@ def plot_times_discovered(fig_dir,op_df):
     ax.set_ylabel("Count")
     ax.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
-    plt.show()
 
 
 def plot_search_results(fig_dir,op_df):
