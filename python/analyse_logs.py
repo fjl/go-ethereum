@@ -30,6 +30,109 @@ form = 'pdf'
 #config_path = "./discv5_test_logs/benign/_nodes-100_topic-1_regBucketSize-10_searchBucketSize-3_adLifetimeSeconds-60_adCacheSize-500_rpcBasePort-20200_udpBasePort-30200_returnedNodes-5"
 config_path = "../discv5-test"
 
+def get_search_dist_df(config_path):
+    log_path = os.path.join(config_path, 'logs')
+    node_id_index = load_nodeid_index(config_path)
+
+    topic_mapping = {} #reverse engineer the topic hash
+    for i in range(1, 1000):
+        topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
+    
+    search_events_heap = []
+    nodes = set()
+    msg_count = {}
+    
+    # Read all the topic search events and add them to a heap
+    for log_file in os.listdir(log_path):
+        if (not log_file.startswith("node-")):
+            continue
+        print("Reading", log_file)
+        registrar = int(log_file.split('-')[1].split('.')[0]) #node-10.log
+        nodes.add(registrar)
+        msg_count[registrar] = {}
+
+        for line in open(os.path.join(log_path, log_file), 'r').readlines():
+            if(line[0] != '{'):
+                #not a json line
+                continue
+            jsons = json.loads(line)
+
+            if('adlifetime' not in jsons):
+                continue
+            msg_type = jsons['msg'].split(' ')[1]
+            if msg_type != 'TOPICNODES/v5' and msg_type != 'NODESv5':
+                continue
+            total = int(jsons['tot'])
+            
+            in_out_s = jsons['msg'].split(' ')[0]
+            if(in_out_s != '<<'):
+                continue
+            ok = jsons['ok']
+            if (ok != 'true'):
+                continue
+
+            searcher = node_id_index[jsons['id']]
+            if searcher not in msg_count[registrar].keys():
+                msg_count[registrar][searcher] = 1
+            else:
+                msg_count[registrar][searcher] = msg_count[registrar][searcher] + 1
+
+            if msg_count[registrar][searcher] != total:
+                continue
+
+            if(registrar == searcher):
+                print('This should not happen - node is sending itself a REGCONFIRMATION: ', line)
+            del msg_count[registrar][searcher]
+            # parse time
+            dt = parse(jsons['t'])
+            unix_time = int(time.mktime(dt.timetuple()))
+
+            heapq.heappush(search_events_heap, (unix_time, registrar, searcher))
+
+    num_searches = {} # {node : number of search operations at that node}
+    num_searches_ot = {} 
+    init_time = None
+
+    # Read the registration events in order
+    while len(search_events_heap) > 0:
+        timestamp, registrar, searcher = heapq.heappop(reg_events_heap)
+    
+        # the first event will have timestamp of 0
+        if init_time is None:
+            init_time = timestamp
+            timestamp = 0
+        else:
+            timestamp -= init_time
+        if registrar not in num_searches.keys():
+            num_searches[registrar] = 1
+        else:
+            num_searches[registrar] = num_searches[registrar] + 1
+
+        if timestamp not in num_searches_ot.keys():
+            num_searches_ot[timestamp] = {}
+        num_searches_ot[timestamp][registrar] = num_searches[registrar]
+
+    times = list(num_searches_ot.keys())
+    times = sorted(times)
+    rows = []
+    num_searches = {}
+    for node in list(nodes):
+        num_searches[node] = 0
+
+    for timestamp in times:
+        search_events = num_searches_ot[timestamp]
+        for registrar in search_events.keys():
+            num_searches[registrar] = search_events[registrar]
+        row = {}
+        row['timestamp'] = timestamp
+        for node in list(nodes):
+            row['node' + str(node)] = num_searches[node]
+
+        rows.append(row)
+
+    search_df = pd.DataFrame(rows)
+    return search_df
+
 def get_storage_and_advertisement_dist_for_heatmap(config_path):
     log_path = os.path.join(config_path, 'logs')
     node_id_index = load_nodeid_index(config_path)
@@ -629,12 +732,12 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
     lgd = axes.legend(loc=9, bbox_to_anchor=(0.5,-0.09), ncol=4)
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
-def plot_storage_heatmap(fig_dir, storage_df):
+def plot_heatmap(plotname, fig_dir, storage_df):
     fig, axes = plt.subplots(figsize=(10, 4))
     storage_df = storage_df.set_index('timestamp') 
     plt.figure(figsize=(15,15)) # large figure to display all the nodes in the y axis
     sns.heatmap(storage_df.T, cmap='plasma', xticklabels=60)
-    plt.savefig(fig_dir + 'storage_time_heatmap.'+form,format=form)
+    plt.savefig(fig_dir + plotname + '.'+form,format=form)
 
 def plot_ads_per_node_over_time(fig_dir, adverts_df):
     fig, axes = plt.subplots(figsize=(10, 4))
@@ -740,6 +843,8 @@ def create_dfs(out_dir):
     storage_df_heatmap.to_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
     advert_df_heatmap.to_json(os.path.join(df_dir, 'advert_heatmap_df.json'))
 
+    search_df = get_search_dist_df(out_dir)
+    search_df.to_json(os.path.join(df_dir, 'search_df.json'))
 
 # plot_dfs loads and creates plots out of the analysis data frames.
 def plot_dfs(out_dir):
@@ -778,7 +883,10 @@ def plot_dfs(out_dir):
     plot_ads(fig_dir, storage_df, advert_dist_df)
 
     storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
-    plot_storage_heatmap(fig_dir, storage_df_heatmap)
+    plot_heatmap('storage_heatmap', fig_dir, storage_df_heatmap)
+
+    search_df = pd.read_json(os.path.join(df_dir, 'search_df.json'))
+    plot_heatmap('search_heatmap', fig_dir, storage_df_heatmap)
 
     plt.close()
 
