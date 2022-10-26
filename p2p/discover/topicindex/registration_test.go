@@ -44,17 +44,17 @@ func TestRegistrationBuckets(t *testing.T) {
 	r.AddNodes(nil, close20)
 
 	last := len(r.buckets) - 1
-	if !rbContainsAll(r.buckets[last], far256) {
-		t.Fatalf("far256 nodes missing in bucket[%d]", last)
+	if !rbContainsAll(r.buckets[0], far256) {
+		t.Fatalf("far256 nodes missing in bucket[%d]", 0)
 	}
-	if !rbContainsAll(r.buckets[last-1], far255) {
-		t.Fatalf("far255 nodes missing in bucket[%d]", last-1)
+	if !rbContainsAll(r.buckets[1], far255) {
+		t.Fatalf("far255 nodes missing in bucket[%d]", 1)
 	}
-	if !rbContainsAll(r.buckets[0], close5) {
-		t.Fatalf("close5 nodes missing in bucket[%d]", 0)
+	if !rbContainsAll(r.buckets[last], close5) {
+		t.Fatalf("close5 nodes missing in bucket[%d]", last)
 	}
-	if !rbContainsAll(r.buckets[0], close20) {
-		t.Fatalf("close20 nodes missing in bucket[%d]", 0)
+	if !rbContainsAll(r.buckets[last], close20) {
+		t.Fatalf("close20 nodes missing in bucket[%d]", last-20)
 	}
 }
 
