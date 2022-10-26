@@ -1,10 +1,14 @@
 {
+    "nodes": 5,
+    "returnedNodes": 5,
+    "lookupTime": 30,
+
     "pingInterval": 10,
     "bucketRefreshInterval": 60,
 
     "adCacheSize": 5,
-    "adLifetimeSeconds": 60,
-    "regBucketSize": 10,
+    "adLifetimeSeconds": 10,
+    "regBucketSize": 3,
     "regBucketStandbySize": 20,
     "searchBucketSize": 3,
 

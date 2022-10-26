@@ -1,12 +1,14 @@
 {
-    "pingInterval": 10,
-    "bucketRefreshInterval": 60,
+    "nodes": 100,
+    "lookupTime": 120,
 
+    "pingInterval": 10,
+    "bucketRefreshInterval": 120,
     "adCacheSize": 500,
     "adLifetimeSeconds": 60,
-    "regBucketSize": 10,
+    "regBucketSize": 5,
     "regBucketStandbySize": 20,
-    "searchBucketSize": 3,
+    "searchBucketSize": 5,
 
     "rpcSearchTimeoutSeconds": 120
 }
