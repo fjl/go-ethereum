@@ -45,7 +45,7 @@ type Registration struct {
 	cfg   Config
 	log   log.Logger
 
-	// Note: registration buckets are ordered close -> far.
+	// Note: registration buckets are ordered far -> close.
 	buckets [regTableDepth]regBucket
 	heap    regHeap
 
@@ -333,12 +333,11 @@ func (r *Registration) removeAttempt(att *RegAttempt, reason string) {
 }
 
 func (r *Registration) bucketIndex(id enode.ID) int {
-	dist := enode.LogDist(enode.ID(r.topic), id)
-	index := dist - 256 + (len(r.buckets) - 1)
-	if index < 0 {
-		index = 0
+	dist := 256 - enode.LogDist(enode.ID(r.topic), id)
+	if dist > len(r.buckets)-1 {
+		dist = len(r.buckets) - 1
 	}
-	return index
+	return dist
 }
 
 // regHeap is a priority queue of registration attempts. This should not be accessed
