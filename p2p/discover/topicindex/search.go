@@ -109,7 +109,7 @@ func (s *Search) IsDone() bool {
 	}
 	// No unasked nodes remain. Consider it done when the last
 	// two lookups didn't yield any new nodes.
-	return s.queriesWithoutNewNodes >= 2
+	return s.queriesWithoutNewNodes >= 4
 }
 
 // BucketsWithFreeSpace gives n distances from the topic at which
