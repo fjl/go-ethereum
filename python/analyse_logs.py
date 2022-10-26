@@ -12,6 +12,15 @@ import seaborn as sns
 import heapq # to sort register removal events
 import time
 import concurrent.futures
+import matplotlib
+
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 16}
+
+matplotlib.rc('font', **font)
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
 
 from . network import load_nodeid_index
 
@@ -500,7 +509,7 @@ def plot_operation_returned(fig_dir,op_df):
 
 
 def plot_search_times(fig_dir,op_df):
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
 
     df = op_df[~op_df['time'].isna()]
     df = df[df['method'] == 'discv5_topicSearch']
@@ -517,7 +526,7 @@ def plot_msg_operation(fig_dir,msg_df):
 
     for op_type, group_op_type in msg_df.groupby('op_type'):
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 4))
         legend_elements = []
         added = set()
         for opid, group_opid in group_op_type.groupby('opid'):
@@ -540,16 +549,16 @@ def plot_msg_operation(fig_dir,msg_df):
 
 
 def plot_msg_topic(fig_dir,msg_df):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
     ax = msg_df['msg_type'].value_counts().plot(kind='bar')
     ax.figure.savefig(fig_dir + 'msg_type_count.'+form,format=form,bbox_inches="tight")
 
 
 def plot_msg_op_topic(fig_dir,msg_df):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
 
     for op_type, group_op_type in msg_df.groupby('op_type'):
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 4))
         group_op_type['topic'].value_counts().plot(kind='bar', title=op_type)
         ax.set_ylabel("#Messages")
         fig.savefig(fig_dir + op_type+'_msg_per_topic.'+form,format=form)
@@ -560,7 +569,7 @@ def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df_exploded.explode('result')
     op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch'] 
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
     counter = 0
     offset = 0
     for topic, group in op_df_exploded.groupby('topic'):
@@ -580,7 +589,7 @@ def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
     op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
     op_df_droppedNone['opid'].value_counts().plot(ax=axes, kind='bar')
     axes.set_xlabel("Topic search operation")
     axes.set_ylabel("Number of results")
@@ -592,7 +601,7 @@ def plot_search_results(fig_dir,op_df):
 def plot_waiting_time(fig_dir,msg_df):
     # consider only final REGTOPIC message
     df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
     sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
 
@@ -602,7 +611,7 @@ def plot_times_registered(fig_dir, msg_df):
     df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
     df = df.groupby('peer_id')
 
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
     df['ok'].value_counts().plot(ax=axes, kind='bar')
     axes.set_xticklabels([])
     axes.set_xlabel("Advertiser Node")
@@ -611,7 +620,7 @@ def plot_times_registered(fig_dir, msg_df):
 
 
 def plot_storage_per_node_over_time(fig_dir, storage_df):
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
     axes.set_xlabel("Time (msec)")
     axes.set_ylabel("Number of active registrations stored")
     for column_name in storage_df:
@@ -621,14 +630,14 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
     fig.savefig(fig_dir + 'storage_time.'+form,format=form, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
 def plot_storage_heatmap(fig_dir, storage_df):
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
     storage_df = storage_df.set_index('timestamp') 
     plt.figure(figsize=(15,15)) # large figure to display all the nodes in the y axis
     sns.heatmap(storage_df.T, cmap='plasma', xticklabels=60)
     plt.savefig(fig_dir + 'storage_time_heatmap.'+form,format=form)
 
 def plot_ads_per_node_over_time(fig_dir, adverts_df):
-    fig, axes = plt.subplots()
+    fig, axes = plt.subplots(figsize=(10, 4))
     axes.set_xlabel("Time (msec)")
     axes.set_ylabel("Number of active advertisements")
     for column_name in adverts_df:
@@ -640,13 +649,13 @@ def plot_ads_per_node_over_time(fig_dir, adverts_df):
 def plot_mean_waiting_time(fig_dir, msg_df):
     wtime_df = msg_df.dropna(subset=['wtime'])
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
     wtime_df.groupby("node_id").wtime.mean().plot(kind='bar', ax=ax, title="Average issued wtime per Node")
     ax.set_xlabel("Node ID")
     ax.set_ylabel("Average issued waiting time")
     fig.savefig(fig_dir + 'waiting_time_issued_avg.'+form, format=form)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 4))
     wtime_df.groupby("peer_id").wtime.mean().plot(kind='bar', ax=ax, title="Average Received wtime per Node")
     ax.set_xlabel("Node ID")
     ax.set_ylabel("Average received waiting time")
@@ -660,7 +669,7 @@ def plot_ads(fig_dir, storage_df: pd.DataFrame, advert_dist_df: pd.DataFrame):
         keys = []
         mins = []
         maxs = []
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 4))
         for key, group in df.groupby('timestamp'):
             keys.append(key)
             means.append(group[feature].mean())
@@ -717,7 +726,7 @@ def create_dfs(out_dir):
     print('Computing msg_df')
     msg_df = get_msg_df(out_dir, op_df)
     msg_df = msg_df.dropna(subset=['opid'])
-    msg_df.to_json(os.path.join(df_dir, 'msg_df.json'))
+    msg_df.to_csv(os.path.join(df_dir, 'msg_df.json'))
     print('Written to msg_df.json')
 
     print('Computing storage_df, advert_dist_df')
@@ -746,7 +755,7 @@ def plot_dfs(out_dir):
     plot_search_times(fig_dir,op_df)
 
     print("Reading msg df")
-    msg_df = pd.read_json(os.path.join(df_dir, 'msg_df.json'))
+    msg_df = pd.read_csv(os.path.join(df_dir, 'msg_df.json'))
 
     plot_msg_operation(fig_dir, msg_df)
 
