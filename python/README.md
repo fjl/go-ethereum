@@ -1,6 +1,33 @@
 # discv5 experiment setup
 
-All commands are to be executed from the top-level directory.
+### Installing
+
+You need Python >= 3.9.
+
+It is recommended to use virtualenv to keep your Python package collection in check.
+Create your environment like this:
+
+```
+python3 -m venv .virtualenv
+```
+
+Now enter the environment (assuming a bash-like shell). This sets up your PATH and
+Python-related environment variables to store everything in `.virtualenv`.
+
+```
+source .virtalenv/bin/activate
+```
+
+Now install the dependencies:
+
+```
+python -m pip install -r python/requirements.txt
+```
+
+### Running Experiments
+
+All commands are to be executed from the top-level directory. If you are using virtualenv,
+remember to enter the environment first.
 
 You can run the testbed with default settings like this:
 
