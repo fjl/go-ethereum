@@ -12,19 +12,14 @@ import math
 import collections
 import numpy as np
 import scipy.stats as ss
-import queue
 import concurrent.futures as futures
 
 from . network import Network, NetworkLocal
 
-
 request_rate = 10  # request rate per second
-num_topics = 1
 zipf_exponent = 1.0
 
-NODE_ID = 0
 OP_ID = 100
-LOGS = queue.Queue()
 
 MAX_REQUEST_THREADS = 32
 EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
@@ -34,20 +29,13 @@ def gen_op_id():
     OP_ID += 1
     return OP_ID
 
-def gen_node_id():
-    global NODE_ID
-    NODE_ID += 1
-    return NODE_ID
+def open_logs(out_dir):
+    return open(os.path.join(out_dir, "logs", "logs.json"), 'a')
 
-# Write json logs to a file
-def write_logs_to_file(fname):
-    print("Writing request logs to", fname)
-    global LOGS
-    LOGS.put(None)
-    with open(fname, 'w') as f:
-        for data in iter(LOGS.get, None):
-            json.dump(data, f)
-            f.write("\n")
+def dump_json_events(f, events: list):
+    for obj in events:
+        json.dump(obj, f)
+        f.write('\n')
 
 # get current time in milliseconds
 def get_current_time_msec():
@@ -219,7 +207,7 @@ def node_neighbor_count(network: Network, node):
 
 
 # perform topic registrations
-def register_topics(network: Network, zipf, config):
+def register_topics(network: Network, zipf: TruncatedZipfDist, config: dict, out_dir: str):
     node_topic = {}
     time_now = float(time.time())
     nodes = list(range(1, config['nodes'] + 1))
@@ -245,11 +233,18 @@ def register_topics(network: Network, zipf, config):
             proc.append(EXECUTOR.submit(send_register, network, node, topic, gen_op_id()))
             time_next = time_now + random.expovariate(request_rate)
 
-    wait_for_processes(proc)
+    with open_logs(out_dir) as logs_file:
+        for p in futures.as_completed(proc):
+            exc = p.exception()
+            if exc:
+                print('error in worker', p)
+                traceback.print_exception(type(exc), exc, exc.__traceback__)
+            else:
+                dump_json_events(logs_file, p.result())
+
     return node_topic
 
 def send_register(network: Network, node: int, topic, op_id):
-    global LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_registerTopic",
@@ -259,16 +254,16 @@ def send_register(network: Network, node: int, topic, op_id):
     }
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
-    LOGS.put(payload)
 
     print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
     resp = requests.post(network.node_api_url(node), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
-    LOGS.put(resp)
+
+    return [payload, resp]
 
 
-def search_topics(network: Network, zipf, config, node_to_topic):
+def search_topics(network: Network, zipf: TruncatedZipfDist, config: dict, node_to_topic: dict, out_dir: str):
     req_total_count = config['nodes'] * config['searchIterations']
     req_delay = config['lookupTime'] / config['nodes']
     req_counts = {
@@ -293,10 +288,16 @@ def search_topics(network: Network, zipf, config, node_to_topic):
         proc.append(EXECUTOR.submit(send_lookup, network, node=node, topic=topic, nresults=want_num_results, op_id=gen_op_id()))
         time.sleep(req_delay)
 
-    wait_for_processes(proc)
+    with open_logs(out_dir) as logs_file:
+        for p in futures.as_completed(proc):
+            exc = p.exception()
+            if exc:
+                print('error in worker', p)
+                traceback.print_exception(type(exc), exc, exc.__traceback__)
+            else:
+                dump_json_events(logs_file, p.result())
 
 def send_lookup(network: Network, node=0, topic=0, nresults=0, op_id=0):
-    global LOGS
     topic_digest = get_topic_digest(topic)
     payload = {
         "method": "discv5_topicSearch",
@@ -306,14 +307,14 @@ def send_lookup(network: Network, node=0, topic=0, nresults=0, op_id=0):
     }
     payload["opid"] = op_id
     payload["time"] = get_current_time_msec()
-    LOGS.put(payload)
 
     resp = requests.post(network.node_api_url(node), json=payload).json()
     resp["opid"] = op_id
     resp["time"] = get_current_time_msec()
     d = resp['time'] - payload['time']
     print('Search response: node {} found {} nodes in {}ms'.format(node, len(resp["result"]), d))
-    LOGS.put(resp)
+
+    return [payload, resp]
 
 
 def read_config(dir):
@@ -332,7 +333,7 @@ def run_workload(network: Network, params, out_dir):
     print("Starting registrations...")
     zipf = TruncatedZipfDist(zipf_exponent, params['topic'])
 
-    node_to_topic = register_topics(network, zipf, params)
+    node_to_topic = register_topics(network, zipf, params, out_dir)
 
     # wait for registrations to complete
     print('Registrations completed, waiting...')
@@ -340,17 +341,7 @@ def run_workload(network: Network, params, out_dir):
 
     # search
     print("Searching...")
-    search_topics(network, zipf, params, node_to_topic)
-
-    write_logs_to_file(os.path.join(out_dir, "logs", "logs.json"))
-
-def wait_for_processes(proc):
-    (done, _) = futures.wait(proc)
-    for p in done:
-        exc = p.exception()
-        if exc:
-            print('error in worker', p)
-            traceback.print_exception(type(exc), exc, exc.__traceback__)
+    search_topics(network, zipf, params, node_to_topic, out_dir)
 
 
 def main():
