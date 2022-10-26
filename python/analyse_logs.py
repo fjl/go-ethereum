@@ -499,10 +499,16 @@ def plot_operation_returned(fig_dir,op_df):
     ax.figure.savefig(fig_dir + 'op_returned.'+form,format=form)
 
 
-def plot_operation_times(fig_dir,op_df):
+def plot_search_times(fig_dir,op_df):
     fig, axes = plt.subplots()
+
     df = op_df[~op_df['time'].isna()]
-    sns.violinplot(x='method',y='time', data=df, ax = axes, cut=0)
+    df = df[df['method'] == 'discv5_topicSearch']
+
+    for topic, data in df.groupby('topic'):
+        sns.violinplot(x='topic', y='time', data=df, ax = axes, cut=0)
+
+    axes.set_title('search request times by topic')
     fig.savefig(fig_dir + 'operation_time.'+form,format=form)
 
 
@@ -732,7 +738,6 @@ def create_dfs(out_dir):
 def plot_dfs(out_dir):
     fig_dir = os.path.join(out_dir, 'figs') + "/"
     df_dir = os.path.join(out_dir, 'dfs')
-    msg_df = pd.read_json(os.path.join(df_dir, 'msg_df.json'))
     op_df = pd.read_json(os.path.join(df_dir, 'op_df.json'))
 
     if not os.path.exists(fig_dir):
@@ -740,7 +745,10 @@ def plot_dfs(out_dir):
 
     plot_operation_returned(fig_dir,op_df)
 
-    plot_operation_times(fig_dir,op_df)
+    plot_search_times(fig_dir,op_df)
+
+    print("Reading msg df")
+    msg_df = pd.read_json(os.path.join(df_dir, 'msg_df.json'))
 
     plot_msg_operation(fig_dir, msg_df)
 
