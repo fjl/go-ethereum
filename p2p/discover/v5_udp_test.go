@@ -214,7 +214,7 @@ func TestUDPv5_topicqueryHandling(t *testing.T) {
 	topic1 := topicindex.TopicID{1, 1, 1, 1}
 	topic2 := topicindex.TopicID{9, 9, 9, 9}
 
-	topicNodesList := nodesAtDistance(test.table.self().ID(), 256, 10)
+	topicNodesList := nodesAtDistance(test.table.self().ID(), 255, 8)
 	for _, n := range topicNodesList {
 		test.udp.topicTable.Add(n, topic2)
 	}
@@ -232,45 +232,78 @@ func TestUDPv5_topicqueryHandling(t *testing.T) {
 	t.Run("topicnodes-only", func(t *testing.T) {
 		// Ask for nodes of topic2.
 		test.packetIn(&v5wire.TopicQuery{ReqID: []byte{1}, Topic: topic2})
-		resp := test.expectMultipleResponses(4, []byte{1}, 1*time.Second)
+		resp := test.expectMultipleResponses(3, []byte{1}, 1*time.Second)
 		tnresp := packetsOfType[*v5wire.TopicNodes](resp)
 
 		// Check that TOPICNODES responses contain all the nodes.
-		checkResponseCountField(t, resp, 4)
+		checkResponseCountField(t, resp, 3)
 		checkResponseNodes(t, tnresp, topicNodesList)
 	})
 
 	// Now add some nodes to the main node table as well.
-	neighborNodes := nodesAtDistance(enode.ID(topic1), 250, 6)
-	fillTable(test.table, wrapNodes(neighborNodes))
+	requestedNeighbors := concatNodes(
+		nodesAtDistance(enode.ID(topic1), 250, 3),
+		nodesAtDistance(enode.ID(topic1), 251, 2),
+		nodesAtDistance(enode.ID(topic1), 252, 2),
+	)
+	requestedNeighborSet := make(map[enode.ID]bool)
+	for _, n := range requestedNeighbors {
+		requestedNeighborSet[n.ID()] = true
+	}
+	unrequestedNeighbors := nodesAtDistance(enode.ID(topic1), 253, 3)
+	fillTable(test.table, wrapNodes(requestedNeighbors))
+	fillTable(test.table, wrapNodes(unrequestedNeighbors))
 
 	t.Run("nodes-only", func(t *testing.T) {
 		// Ask for nodes of topic1. There are none, but the main table has
 		// some nodes close to the topic, and they are returned.
-		test.packetIn(&v5wire.TopicQuery{ReqID: []byte{3}, Topic: topic1})
-		resp := test.expectMultipleResponses(2, []byte{3}, 1*time.Second)
+		req := &v5wire.TopicQuery{
+			ReqID:   []byte{3},
+			Topic:   topic1,
+			Buckets: []uint{250, 251, 252},
+		}
+		test.packetIn(req)
+		resp := test.expectMultipleResponses(1, []byte{3}, 1*time.Second)
 		tnresp := packetsOfType[*v5wire.TopicNodes](resp)
 		nresp := packetsOfType[*v5wire.Nodes](resp)
 
-		// Check that TOPICNODES responses contain all the nodes.
-		checkResponseCountField(t, resp, 2)
+		// Check that NODES responses contain the requested distances only.
+		checkResponseCountField(t, resp, 1)
 		checkResponseNodes(t, tnresp, nil)
-		checkResponseNodes(t, nresp, neighborNodes)
+		auxNodes := responseNodes(nresp)
+		if len(auxNodes) != 3 {
+			t.Fatal("wrong number of auxiliary nodes in response")
+		}
+		for _, n := range auxNodes {
+			if !requestedNeighborSet[n.ID()] {
+				t.Fatal("response includes unrequested distance")
+			}
+		}
 	})
 
 	t.Run("both-kinds", func(t *testing.T) {
-		// Ask for nodes of topic1. There are none, but the main table has
-		// some nodes close to the topic, and they are returned.
-		test.packetIn(&v5wire.TopicQuery{ReqID: []byte{3}, Topic: topic2})
-		resp := test.expectMultipleResponses(6, []byte{3}, 1*time.Second)
-
+		// Ask for nodes of topic2.
+		req := &v5wire.TopicQuery{
+			ReqID:   []byte{4},
+			Topic:   topic2,
+			Buckets: []uint{250, 251, 252},
+		}
+		test.packetIn(req)
+		resp := test.expectMultipleResponses(4, []byte{4}, 1*time.Second)
 		tnresp := packetsOfType[*v5wire.TopicNodes](resp)
 		nresp := packetsOfType[*v5wire.Nodes](resp)
 
-		// Check that TOPICNODES responses contain all the nodes.
-		checkResponseCountField(t, resp, 6)
+		checkResponseCountField(t, resp, 4)
 		checkResponseNodes(t, tnresp, topicNodesList)
-		checkResponseNodes(t, nresp, neighborNodes)
+		auxNodes := responseNodes(nresp)
+		if len(auxNodes) != 1 {
+			t.Fatalf("%d auxiliary nodes in response, want 3", len(auxNodes))
+		}
+		for _, n := range responseNodes(nresp) {
+			if !requestedNeighborSet[n.ID()] {
+				t.Fatal("response includes unrequested distance")
+			}
+		}
 	})
 }
 
@@ -282,23 +315,28 @@ func TestUDPv5_regtopicHandling(t *testing.T) {
 	defer test.close()
 
 	topic1 := topicindex.TopicID{1, 1, 1, 1}
-	neighborNodes := nodesAtDistance(enode.ID(topic1), 250, 6)
+	neighborNodes := concatNodes(
+		nodesAtDistance(enode.ID(topic1), 250, 1),
+		nodesAtDistance(enode.ID(topic1), 251, 1),
+		nodesAtDistance(enode.ID(topic1), 252, 1),
+	)
 	fillTable(test.table, wrapNodes(neighborNodes))
 
 	// Send the request.
 	self := test.getNode(test.remotekey, test.remoteaddr)
 	test.packetIn(&v5wire.Regtopic{
-		ReqID: []byte{0},
-		Topic: topic1,
-		ENR:   self.Node().Record(),
+		ReqID:   []byte{0},
+		Topic:   topic1,
+		ENR:     self.Node().Record(),
+		Buckets: []uint{250, 251, 252},
 	})
 
 	// Send the response.
-	resp := test.expectMultipleResponses(3, []byte{0}, 1*time.Second)
+	resp := test.expectMultipleResponses(2, []byte{0}, 1*time.Second)
 	confirmations := packetsOfType[*v5wire.Regconfirmation](resp)
 	nresp := packetsOfType[*v5wire.Nodes](resp)
 
-	checkResponseCountField(t, resp, 3)
+	checkResponseCountField(t, resp, 2)
 	checkResponseNodes(t, nresp, neighborNodes)
 
 	if len(confirmations) == 0 {
@@ -418,14 +456,17 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 	var (
 		topic       = topicindex.TopicID{1, 1, 1, 1}
 		remote      = test.getNode(test.remotekey, test.remoteaddr).Node()
-		resultNodes = nodesAtDistance(remote.ID(), 256, 8)
-		auxNodes    = nodesAtDistance(remote.ID(), 255, 6)
+		resultNodes = nodesAtDistance(remote.ID(), 252, 8)
+		auxNode255  = nodeAtDistance(enode.ID(topic), 255, net.IP{1, 2, 3, 4}).Node
+		auxNode254  = nodeAtDistance(enode.ID(topic), 254, net.IP{1, 2, 3, 5}).Node
+		auxNode253  = nodeAtDistance(enode.ID(topic), 253, net.IP{1, 2, 3, 6}).Node
 		done        = make(chan error, 1)
 		response    topicQueryResult
 	)
+
 	go func() {
 		var err error
-		response = test.udp.topicQuery(remote, topic, []uint{}, 0)
+		response = test.udp.topicQuery(remote, topic, []uint{254, 254, 253}, 0)
 		done <- err
 	}()
 
@@ -437,7 +478,7 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 		test.packetIn(&v5wire.Nodes{
 			ReqID:     p.ReqID,
 			RespCount: 4,
-			Nodes:     nodesToRecords(auxNodes[:4]),
+			Nodes:     []*enr.Record{auxNode255.Record(), auxNode254.Record()},
 		})
 		test.packetIn(&v5wire.TopicNodes{
 			ReqID:     p.ReqID,
@@ -447,7 +488,7 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 		test.packetIn(&v5wire.Nodes{
 			ReqID:     p.ReqID,
 			RespCount: 4,
-			Nodes:     nodesToRecords(auxNodes[4:]),
+			Nodes:     []*enr.Record{auxNode253.Record()},
 		})
 		test.packetIn(&v5wire.TopicNodes{
 			ReqID:     p.ReqID,
@@ -460,6 +501,8 @@ func TestUDPv5_topicqueryCall(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	auxNodes := []*enode.Node{&auxNode255, &auxNode254, &auxNode253}
 	if err := checkNodesEqual(response.auxNodes, auxNodes); err != nil {
 		t.Fatal("wrong auxNodes in response:", err)
 	}

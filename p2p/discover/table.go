@@ -441,7 +441,7 @@ func (tab *Table) findnodeByID(target enode.ID, nresults int, preferLive bool) *
 }
 
 // collectAtDistances finds n nodes matching the check function.
-func (tab *Table) collectOnePerDist(target enode.ID, dists []uint, nresults int) []*enode.Node {
+func (tab *Table) collectOnePerDist(target enode.ID, dists []uint, nresults int, check func(*node) bool) []*enode.Node {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 
@@ -459,6 +459,9 @@ func (tab *Table) collectOnePerDist(target enode.ID, dists []uint, nresults int)
 
 			dist := uint(enode.LogDist(target, n.ID()))
 			if _, ok := requested[dist]; !ok {
+				continue
+			}
+			if !check(n) {
 				continue
 			}
 			delete(requested, dist)

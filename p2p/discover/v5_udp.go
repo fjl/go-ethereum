@@ -960,7 +960,7 @@ func (t *UDPv5) collectTableNodes(rip net.IP, distances []uint, limit int) []*en
 // handleTopicQuery serves TOPICQUERY messages.
 func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TopicQuery) {
 	// Collect closest nodes to topic hash.
-	auxNodes := t.tab.collectOnePerDist(enode.ID(p.Topic), p.Buckets, regtopicNodesLimit)
+	auxNodes := t.collectTopicAuxNodes(p.Topic, p.Buckets, fromAddr.IP)
 	nodesResponses := packNodes(auxNodes)
 
 	// Get matching nodes from the topic table.
@@ -1038,7 +1038,7 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 	}
 
 	// Collect closest nodes to topic hash.
-	nodes := t.tab.collectOnePerDist(enode.ID(ticket.Topic), p.Buckets, regtopicNodesLimit)
+	nodes := t.collectTopicAuxNodes(ticket.Topic, p.Buckets, fromAddr.IP)
 	nodesResponses := packNodes(nodes)
 	responseCount := uint8(1 + len(nodesResponses))
 
@@ -1074,6 +1074,13 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		msg := &v5wire.Nodes{ReqID: p.ReqID, RespCount: responseCount, Nodes: nodes}
 		t.sendResponse(fromID, fromAddr, msg)
 	}
+}
+
+func (t *UDPv5) collectTopicAuxNodes(topic topicindex.TopicID, reqDist []uint, remoteIP net.IP) []*enode.Node {
+	check := func(n *node) bool {
+		return netutil.CheckRelayIP(remoteIP, n.IP()) == nil
+	}
+	return t.tab.collectOnePerDist(enode.ID(topic), reqDist, regtopicNodesLimit, check)
 }
 
 func waitTimeToMs(d time.Duration) uint {
