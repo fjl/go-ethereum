@@ -959,17 +959,8 @@ func (t *UDPv5) collectTableNodes(rip net.IP, distances []uint, limit int) []*en
 
 // handleTopicQuery serves TOPICQUERY messages.
 func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TopicQuery) {
-	// Collect closest nodes to topic hash.
-	auxNodes := t.collectTopicAuxNodes(p.Topic, p.Buckets, fromAddr.IP)
-	nodesResponses := packNodes(auxNodes)
+	topicResponses, nodesResponses := t.createTopicQueryResponse(fromID, fromAddr, p)
 
-	// Get matching nodes from the topic table.
-	topicNodes := t.topicTable.RandomNodes(p.Topic, topicNodesResultLimit, func(n *enode.Node) bool {
-		return netutil.CheckRelayIP(fromAddr.IP, n.IP()) == nil
-	})
-	topicResponses := packNodes(topicNodes)
-
-	// Send responses.
 	for _, resp := range nodesResponses {
 		t.sendResponse(fromID, fromAddr, &v5wire.Nodes{
 			ReqID:     p.ReqID,
@@ -993,6 +984,20 @@ func (t *UDPv5) handleTopicQuery(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wi
 	}
 }
 
+func (t *UDPv5) createTopicQueryResponse(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TopicQuery) (topicResponses, auxResponses [][]*enr.Record) {
+	// Collect closest nodes to topic hash.
+	auxNodes := t.collectTopicAuxNodes(p.Topic, p.Buckets, fromAddr.IP)
+	auxResponses = packNodes(auxNodes)
+
+	// Get matching nodes from the topic table.
+	topicNodes := t.topicTable.RandomNodes(p.Topic, topicNodesResultLimit, func(n *enode.Node) bool {
+		return netutil.CheckRelayIP(fromAddr.IP, n.IP()) == nil
+	})
+	topicResponses = packNodes(topicNodes)
+
+	return topicResponses, auxResponses
+}
+
 // handleTalkRequest runs the talk request handler of the requested protocol.
 func (t *UDPv5) handleTalkRequest(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.TalkRequest) {
 	t.trlock.Lock()
@@ -1008,10 +1013,24 @@ func (t *UDPv5) handleTalkRequest(fromID enode.ID, fromAddr *net.UDPAddr, p *v5w
 }
 
 func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.Regtopic) {
+	confirmation, nodes := t.createRegtopicResponse(fromID, fromAddr, p)
+	if confirmation == nil {
+		return
+	}
+
+	responseCount := uint8(1 + len(nodes))
+	t.sendResponse(fromID, fromAddr, confirmation)
+	for _, nodes := range nodes {
+		msg := &v5wire.Nodes{ReqID: p.ReqID, RespCount: responseCount, Nodes: nodes}
+		t.sendResponse(fromID, fromAddr, msg)
+	}
+}
+
+func (t *UDPv5) createRegtopicResponse(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire.Regtopic) (*v5wire.Regconfirmation, [][]*enr.Record) {
 	ticket, err := t.ticketSealer.Unpack(p.Topic, p.Ticket)
 	if err != nil {
 		t.log.Debug("Invalid ticket in REGTOPIC/v5", "id", fromID, "addr", fromAddr, "err", err)
-		return
+		return nil, nil
 	}
 
 	// TODO: this is expensive! I think we could get around sending ENR here by storing
@@ -1021,11 +1040,11 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 	n, err := enode.New(t.validSchemes, p.ENR)
 	if err != nil {
 		t.log.Debug("Node record in REGTOPIC/v5 is invalid", "id", fromID, "addr", fromAddr, "err", err)
-		return
+		return nil, nil
 	}
 	if n.ID() != fromID {
 		t.log.Debug("Node record in REGTOPIC/v5 does not match id", "id", fromID, "addr", fromAddr)
-		return
+		return nil, nil
 	}
 
 	// Compute total wait time of requesting node.
@@ -1069,11 +1088,7 @@ func (t *UDPv5) handleRegtopic(fromID enode.ID, fromAddr *net.UDPAddr, p *v5wire
 		confirmation.CumulativeWaitTime = &totalWaitTimeSeconds
 	}
 
-	t.sendResponse(fromID, fromAddr, confirmation)
-	for _, nodes := range nodesResponses {
-		msg := &v5wire.Nodes{ReqID: p.ReqID, RespCount: responseCount, Nodes: nodes}
-		t.sendResponse(fromID, fromAddr, msg)
-	}
+	return confirmation, nodesResponses
 }
 
 func (t *UDPv5) collectTopicAuxNodes(topic topicindex.TopicID, reqDist []uint, remoteIP net.IP) []*enode.Node {
