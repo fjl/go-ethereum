@@ -832,7 +832,7 @@ func packetsOfType[T v5wire.Packet](ps []v5wire.Packet) (matches []T) {
 }
 
 // checkResponseCountField checks that ResponseCount == wantCount in the given packets.
-func checkResponseCountField[T v5wire.Packet](t *testing.T, msgs []T, wantCount uint8) {
+func checkResponseCountField[T v5wire.Packet](t testing.TB, msgs []T, wantCount uint8) {
 	t.Helper()
 
 	for _, msg := range msgs {
@@ -855,7 +855,7 @@ func checkResponseCountField[T v5wire.Packet](t *testing.T, msgs []T, wantCount 
 
 // checkResponseNodes checks that the nodes contained in msgs are equal to the expected nodes.
 // The ordering of expectedNodes is ignored.
-func checkResponseNodes[T v5wire.Packet](t *testing.T, msgs []T, expectedNodes []*enode.Node) {
+func checkResponseNodes[T v5wire.Packet](t testing.TB, msgs []T, expectedNodes []*enode.Node) {
 	t.Helper()
 
 	nodes := responseNodes(msgs)
@@ -888,7 +888,7 @@ func responseNodes[T v5wire.Packet](msgs []T) []*enode.Node {
 // udpV5Test is the framework for all tests above.
 // It runs the UDPv5 transport on a virtual socket and allows testing outgoing packets.
 type udpV5Test struct {
-	t                   *testing.T
+	t                   testing.TB
 	pipe                *dgramPipe
 	table               *Table
 	db                  *enode.DB
@@ -950,7 +950,7 @@ func (c *testCodec) decodeFrame(input []byte) (frame testCodecFrame, p v5wire.Pa
 	return frame, p, err
 }
 
-func newUDPV5Test(t *testing.T, cfg Config) *udpV5Test {
+func newUDPV5Test(t testing.TB, cfg Config) *udpV5Test {
 	test := &udpV5Test{
 		t:          t,
 		pipe:       newpipe(),
@@ -961,8 +961,10 @@ func newUDPV5Test(t *testing.T, cfg Config) *udpV5Test {
 		nodesByIP:  make(map[string]*enode.LocalNode),
 	}
 
+	if tt, ok := t.(*testing.T); ok {
+		cfg.Log = testlog.Logger(tt, log.LvlTrace)
+	}
 	cfg.PrivateKey = test.localkey
-	cfg.Log = testlog.Logger(t, log.LvlTrace)
 	cfg.ValidSchemes = enode.ValidSchemesForTesting
 
 	test.db, _ = enode.OpenDB("")
