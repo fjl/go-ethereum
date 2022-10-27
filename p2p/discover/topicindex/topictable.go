@@ -263,16 +263,14 @@ func (tab *TopicTable) Register(n *enode.Node, t TopicID, waitTime time.Duration
 
 // waitTimeState holds the state of waiting time modifier functions.
 type waitTimeState struct {
-	idCounter map[enode.ID]int
-	ipv4      *ipTree
-	ipv6      *ipTree
+	ipv4 *ipTree
+	ipv6 *ipTree
 }
 
 func newWaitTimeState() waitTimeState {
 	return waitTimeState{
-		idCounter: make(map[enode.ID]int),
-		ipv4:      newIPTree(32),
-		ipv6:      newIPTree(128),
+		ipv4: newIPTree(32),
+		ipv6: newIPTree(128),
 	}
 }
 
@@ -293,9 +291,6 @@ func (wt *waitTimeState) ipModifier(n *enode.Node) float64 {
 }
 
 func (wt *waitTimeState) addReg(reg *topicTableEntry) {
-	wt.idCounter[reg.node.ID()]++
-
-	// Add IPs.
 	var ip4 enr.IPv4
 	var ip6 enr.IPv6
 	if reg.node.Load(&ip4) == nil {
@@ -307,16 +302,6 @@ func (wt *waitTimeState) addReg(reg *topicTableEntry) {
 }
 
 func (wt *waitTimeState) removeReg(reg *topicTableEntry) {
-	// Remove from idCounter.
-	id := reg.node.ID()
-	idc := wt.idCounter[id]
-	if idc == 1 {
-		delete(wt.idCounter, id)
-	} else {
-		wt.idCounter[id] = idc - 1
-	}
-
-	// Remove IPs.
 	var ip4 enr.IPv4
 	var ip6 enr.IPv6
 	if reg.node.Load(&ip4) == nil {
