@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v5test"
@@ -275,15 +274,12 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) [
 	defer it.Close()
 
 	var (
-		nodes      = make(chan []*enode.Node, 1)
+		nodesCh    = make(chan []enode.ID, 1)
 		searchDone = make(chan struct{})
-		wg         sync.WaitGroup
 	)
 
 	// This closes the iterator when search is done or times out.
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		timeout := time.NewTimer(api.searchTimeout)
 		defer timeout.Stop()
 		select {
@@ -294,20 +290,22 @@ func (api *discAPI) TopicSearch(topic common.Hash, numNodes int, opID *uint64) [
 	}()
 
 	// This reads nodes from the iterator.
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		nodes <- enode.ReadNodes(it, numNodes)
+		var results []enode.ID
+		seen := make(map[enode.ID]struct{})
+		for it.Next() {
+			id := it.Node().ID()
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			results = append(results, id)
+			seen[id] = struct{}{}
+		}
+		nodesCh <- results
 		close(searchDone)
 	}()
 
-	wg.Wait()
-	results := <-nodes
-	ids := make([]enode.ID, len(results))
-	for i, n := range results {
-		ids[i] = n.ID()
-	}
-	return ids
+	return <-nodesCh
 }
 
 func (api *discAPI) LocalNode() *enode.Node {

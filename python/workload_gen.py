@@ -21,7 +21,7 @@ zipf_exponent = 1.0
 
 OP_ID = 100
 
-MAX_REQUEST_THREADS = 32
+MAX_REQUEST_THREADS = 128
 EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
 
 def gen_op_id():
