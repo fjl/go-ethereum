@@ -651,7 +651,7 @@ def plot_msg_op_topic(fig_dir,msg_df):
         ax.set_ylabel("#Messages")
         fig.savefig(fig_dir + op_type+'_msg_per_topic.'+form,format=form)
 
-
+import random
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
@@ -661,27 +661,42 @@ def plot_times_discovered(fig_dir,op_df):
     counter = 0
     offset = 0
     for topic, group in op_df_exploded.groupby('topic'):
-        y = group['result'].value_counts().to_dict().values()
-
+        y = list(group['result'].value_counts().to_dict().values())
+        print(y)
+        random.shuffle(y)
         ax.bar(list(range(offset, offset + len(y))), y)
         offset += len(y)
         counter += 1
     ax.set_xticklabels([])
-    ax.set_xlabel("Discovered Nodes")
-    ax.set_ylabel("Count")
-    ax.set_yticks(list(op_df_exploded['result'].value_counts()))
+    ax.set_ylabel("#Time Discovered")
+    ax.set_xlabel("Nodes")
+    #ax.set_yticks(list(op_df_exploded['result'].value_counts()))
     fig.savefig(fig_dir + 'times_discovered.'+form,format=form)
 
 
 def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
+    
     op_df_exploded = op_df_exploded.explode('result')
+    
+    op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch']
     op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
+    print("op_df_exploded", op_df_exploded)
+
     fig, axes = plt.subplots(figsize=(10, 4))
-    op_df_droppedNone['opid'].value_counts().plot(ax=axes, kind='bar')
-    axes.set_xlabel("Topic search operation")
-    axes.set_ylabel("Number of results")
-    axes.set_yticks(list(op_df_droppedNone['opid'].value_counts()))
+    counter = 0
+    offset = 0
+    for topic, group in op_df_exploded.groupby('topic'):
+        y = group['opid'].value_counts().to_dict().values()
+        axes.bar(list(range(offset, offset + len(y))), y)
+        offset += len(y)
+        counter += 1
+        
+    #print("df:", op_df_droppedNone['opid'].value_counts())
+    axes.set_xticklabels([])
+    axes.set_ylabel("Avg number of lookup results")
+    axes.set_xlabel("Nodes")
+    #axes.set_yticks(list(op_df_droppedNone['opid'].value_counts()))
 
     fig.savefig(fig_dir + 'discovered_search.'+form,format=form)
 
@@ -689,8 +704,28 @@ def plot_search_results(fig_dir,op_df):
 def plot_waiting_time(fig_dir,msg_df):
     # consider only final REGTOPIC message
     df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
+    df['topic'] = df['topic'].astype(int)
+    df['total_wtime'] = df['total_wtime'].div(60000)    
+    fig, axes = plt.subplots(figsize=(10, 4))
+    y = []
+    stds = []
+    counter  = 0
+    for topic, group in df.groupby('topic'):
+        print("##############")
+        print(topic)
+        #y.append(group['total_wtime'].mean())
+        #stds.append(group['total_wtime'].std())
+        print(group['total_wtime'])
+        axes.bar(int(counter), group['total_wtime'].mean())#, yerr = group['total_wtime'].std())
+        counter += 1
+    #print(y)
+    #print(stds)
+    #fig, ax = plt.subplots(figsize=(10, 4))
+    #sns.violinplot(x='topic',y='total_wtime', data=df, ax = ax, cut = True)
+    print("Counter", counter)
+    axes.set_xticklabels([])
+    axes.set_ylabel("Average waiting time[a]")
+    axes.set_xlabel("Topic")
     fig.savefig(fig_dir + 'waiting_time.'+form,format=form)
 
 
@@ -840,39 +875,39 @@ def plot_dfs(out_dir):
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
 
-    plot_operation_returned(fig_dir,op_df)
+    #plot_operation_returned(fig_dir,op_df)
 
-    plot_search_times(fig_dir,op_df)
+    #plot_search_times(fig_dir,op_df)
 
     print("Reading msg df")
     msg_df = pd.read_csv(os.path.join(df_dir, 'msg_df.json'))
 
-    plot_msg_operation(fig_dir, msg_df)
+    #plot_msg_operation(fig_dir, msg_df)
 
-    plot_msg_topic(fig_dir,msg_df)
+    #plot_msg_topic(fig_dir,msg_df)
 
-    plot_times_discovered(fig_dir,op_df)
+    #plot_times_discovered(fig_dir,op_df)
 
-    plot_times_registered(fig_dir, msg_df)
+    #plot_times_registered(fig_dir, msg_df)
 
-    plot_search_results(fig_dir,op_df)
+    #plot_search_results(fig_dir,op_df)
 
     plot_waiting_time(fig_dir,msg_df)
 
-    plot_mean_waiting_time(fig_dir,msg_df)
+    #plot_mean_waiting_time(fig_dir,msg_df)
 
-    print("Reading storage dfs")
-    advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
-    storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
+    #print("Reading storage dfs")
+    #advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
+    #storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
 
-    plot_ads(fig_dir, storage_df, advert_dist_df)
+    #plot_ads(fig_dir, storage_df, advert_dist_df)
 
-    storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
-    plot_heatmap('storage_heatmap', fig_dir, storage_df_heatmap)
+    #storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
+    #plot_heatmap('storage_heatmap', fig_dir, storage_df_heatmap)
 
-    search_df = pd.read_json(os.path.join(df_dir, 'search_df.json'))
-    plot_heatmap('search_heatmap', fig_dir, storage_df_heatmap)
-
+    #search_df = pd.read_json(os.path.join(df_dir, 'search_df.json'))
+    #plot_heatmap('search_heatmap', fig_dir, storage_df_heatmap)
+    plt.show()
     plt.close()
 
 
