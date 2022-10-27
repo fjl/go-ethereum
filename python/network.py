@@ -86,6 +86,7 @@ class NetworkLocal(Network):
         self.proc.append(p)
 
     def stop(self):
+        print('Stopping network')
         for p in self.proc:
             p.terminate()
             p.wait()
@@ -308,12 +309,13 @@ def filter_params(params):
     return result
 
 def write_experiment(config_path, params):
-    if os.path.exists(config_path+"logs/"):
+    logs_dir = os.path.join(config_path, "logs")
+    if os.path.exists(logs_dir):
         print("Removing old logs...")
-        for filename in os.listdir(config_path+"logs/"):
-            result = os.remove(config_path+"logs/"+filename)
+        for filename in os.listdir(logs_dir):
+            os.remove(os.path.join(logs_dir, filename))
     else:
-        result = os.mkdir(config_path+"logs/")
+        os.mkdir(logs_dir)
 
     node_config = filter_params(params)
     print("Experiment parameters:", params)
