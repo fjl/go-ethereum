@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/p2p/discover/topicindex"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -60,6 +61,17 @@ func BenchmarkHandleTopicMsg(b *testing.B) {
 		}
 	)
 
+	refreshTicket := func() {
+		wt := 10 * time.Second
+		lastUsed := test.udp.clock.Now() - mclock.AbsTime(wt)
+		regtopic.Ticket = test.udp.ticketSealer.Pack(&topicindex.Ticket{
+			Topic:          regtopic.Topic,
+			WaitTimeIssued: wt,
+			LastUsed:       lastUsed,
+			FirstIssued:    lastUsed,
+		})
+	}
+
 	b.Run("topicquery/table-empty", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			topic, aux := test.udp.createTopicQueryResponse(src.ID(), srcAddr, topicquery)
@@ -74,6 +86,8 @@ func BenchmarkHandleTopicMsg(b *testing.B) {
 		}
 	})
 	b.Run("regtopic/table-empty", func(b *testing.B) {
+		refreshTicket()
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			confirmation, _ := test.udp.createRegtopicResponse(src.ID(), srcAddr, regtopic)
 			if confirmation == nil {
@@ -98,17 +112,6 @@ func BenchmarkHandleTopicMsg(b *testing.B) {
 	}
 
 	name := fmt.Sprintf("table-%d-topictable-%d", numTableNodes, numTopicNodes)
-	b.Run(name+"/regtopic", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			confirmation, nodes := test.udp.createRegtopicResponse(src.ID(), srcAddr, regtopic)
-			if confirmation == nil {
-				b.Fatal("error in handler")
-			}
-			if len(nodes) == 0 {
-				b.Fatal("no aux nodes returned")
-			}
-		}
-	})
 	b.Run(name+"/topicquery", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			topic, aux := test.udp.createTopicQueryResponse(src.ID(), srcAddr, topicquery)
@@ -116,6 +119,19 @@ func BenchmarkHandleTopicMsg(b *testing.B) {
 				b.Fatal("no topic nodes returned")
 			}
 			if len(aux) == 0 {
+				b.Fatal("no aux nodes returned")
+			}
+		}
+	})
+	b.Run(name+"/regtopic", func(b *testing.B) {
+		refreshTicket()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			confirmation, nodes := test.udp.createRegtopicResponse(src.ID(), srcAddr, regtopic)
+			if confirmation == nil {
+				b.Fatal("error in handler")
+			}
+			if len(nodes) == 0 {
 				b.Fatal("no aux nodes returned")
 			}
 		}
