@@ -158,16 +158,9 @@ def get_storage_and_advertisement_dist_for_heatmap(config_path):
                 continue
             jsons = json.loads(line)
 
-            if('adlifetime' not in jsons):
+            if not jsons['msg'].startswith('>> REGCONFIRMATION/v5'):
                 continue
-            msg_type = jsons['msg'].split(' ')[1]
-            if msg_type != 'REGCONFIRMATION/v5':
-                continue
-            in_out_s = jsons['msg'].split(' ')[0]
-            if(in_out_s != '>>'):
-                continue
-            ok = jsons['ok']
-            if (ok != 'true'):
+            if 'adlifetime' not in jsons:
                 continue
 
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
@@ -311,17 +304,9 @@ def get_storage_and_advertisement_dist_df(config_path):
                 #not a json line
                 continue
             jsons = json.loads(line)
-
-            if('adlifetime' not in jsons):
+            if not jsons['msg'].startswith('>> REGCONFIRMATION/v5'):
                 continue
-            msg_type = jsons['msg'].split(' ')[1]
-            if msg_type != 'REGCONFIRMATION/v5':
-                continue
-            in_out_s = jsons['msg'].split(' ')[0]
-            if(in_out_s != '>>'):
-                continue
-            ok = jsons['ok']
-            if (ok != 'true'):
+            if 'adlifetime' not in jsons:
                 continue
 
             adlifetime = int(jsons['adlifetime']) / 1000 # get in seconds
@@ -464,7 +449,6 @@ def get_msg_df(config_path, op_df):
         for log_file in os.listdir(log_path):
             if (not log_file.startswith("node-")):
                 continue
-            print("Reading", log_file)
             fname = os.path.join(log_path, log_file)
             rows_f.append(executor.submit(parse_msg_logs, fname, topic_mapping, op_info, node_id_index))
 
@@ -538,6 +522,7 @@ def parse_msg_logs(fname: str, topic_mapping: dict, op_info: dict, node_id_index
 
     fname_base = os.path.basename(fname) # node-10.log
     node_id = fname_base.split('-')[1].split('.')[0]
+    print("Reading", fname_base)
     with open(fname, 'r') as f:
         for line in f:
             if line[0] == '{':
