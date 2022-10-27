@@ -86,9 +86,10 @@ class NetworkLocal(Network):
         self.proc.append(p)
 
     def stop(self):
-        print('Stopping network')
+        if self.proc: print('Stopping network')
         for p in self.proc:
             p.terminate()
+        for p in self.proc:
             p.wait()
         self.proc = []
 
