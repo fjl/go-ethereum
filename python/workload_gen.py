@@ -185,7 +185,7 @@ class Workload:
         for attempt in range(0, retries):
             if attempt > 1:
                 # delay before retrying
-                await asyncio.sleep(random.uniform(0.5, 2))
+                await asyncio.sleep(random.uniform(0.5, 5))
 
             url = self.network.node_api_url(node)
             timeout_cfg = aiohttp.ClientTimeout(total=timeout)
@@ -285,7 +285,7 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        resp = await self._post_json(node, payload, retries=10)
+        resp = await self._post_json(node, payload, retries=25)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
@@ -336,7 +336,7 @@ class Workload:
         self._write_event(payload)
 
         timeout = self.config.get('rpcSearchTimeoutSeconds', 120) + 10
-        resp = await self._post_json(node, payload, retries=10, timeout=timeout)
+        resp = await self._post_json(node, payload, retries=25, timeout=timeout)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
