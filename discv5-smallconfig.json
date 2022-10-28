@@ -1,7 +1,6 @@
 {
     "nodes": 5,
     "returnedNodes": 5,
-    "lookupTime": 30,
 
     "pingInterval": 10,
     "bucketRefreshInterval": 60,

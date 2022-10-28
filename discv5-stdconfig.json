@@ -1,7 +1,6 @@
 {
     "topic": 20,
     "nodes": 500,
-    "lookupTime": 300,
     "searchIterations": 3,
 
     "pingInterval": 10,

@@ -7,7 +7,6 @@ features =  {'nodes': {'type': 'benign', 'default': 500,'defaultAttack': 50, 'va
              'adCacheSize': {'type': 'benign', 'default': 500, 'defaultAttack': 500, 'vals':[500]},
              'returnedNodes': {'type': 'benign', 'default': 30, 'defaultAttack': 1, 'vals':[30]},
              'searchIterations': {'type': 'benign', 'default': 5, 'defaultAttack': 1, 'vals':[5]},
-             'lookupTime': {'type': 'benign', 'default': 300, 'defaultAttack': 1, 'vals':[300]},
 }
 
 
