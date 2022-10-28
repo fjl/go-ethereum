@@ -181,6 +181,7 @@ class Workload:
 
     # _post_json sends a request to a node.
     async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1):
+        last_error = None
         for attempt in range(0, retries):
             if attempt > 0:
                 # delay before retrying
@@ -191,9 +192,10 @@ class Workload:
                 async with self.client.post(url, json=payload) as req:
                     return await req.json()
             except aiohttp.ClientError as e:
-                if show_errors:
-                    print('Node', node, 'HTTP error: ' + str(e))
+                last_error = e
 
+        if show_errors:
+            print('Node', node, 'HTTP error: ' + str(last_error))
         return None
 
     # _write_event appends an event to logs.json.
@@ -250,7 +252,6 @@ class Workload:
             return (node, -1)
         return (node, len(resp['result']))
 
-
     # register_topic performs topic registrations
     async def register_topics(self):
         # send a registration at exponentially distributed
@@ -285,12 +286,11 @@ class Workload:
         self._write_event(payload)
 
         async with self.reqlimit:
-            resp = await self._post_json(node, payload, retries=3)
+            resp = await self._post_json(node, payload, retries=4)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
             self._write_event(resp)
-
 
     # search_topics runs searches
     async def search_topics(self, node_to_topic: dict):
@@ -335,7 +335,7 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        resp = await self._post_json(node, payload, retries=3)
+        resp = await self._post_json(node, payload, retries=4)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
