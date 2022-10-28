@@ -164,8 +164,7 @@ class Workload:
         self.logs_file = open_logs(self.out_dir)
 
         conn = aiohttp.TCPConnector(limit=REQUEST_CONCURRENCY)
-        headers = {'content-type': 'application/json'}
-        self.client = aiohttp.ClientSession(raise_for_status=True, connector=conn, headers=headers)
+        self.client = aiohttp.ClientSession(raise_for_status=True, connector=conn)
 
     # close terminates the workload.
     async def close(self):
