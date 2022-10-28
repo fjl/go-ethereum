@@ -331,4 +331,3 @@ def run_testbed(network: Network, config_path, params):
     make_keys(config_path, params['nodes'])
     write_experiment(config_path, params)
     start_nodes(network, config_path, params)
-    time.sleep(10)
