@@ -12,5 +12,5 @@
     "regBucketStandbySize": 20,
     "searchBucketSize": 3,
 
-    "rpcSearchTimeoutSeconds": 120
+    "rpcSearchTimeoutSeconds": 30
 }
