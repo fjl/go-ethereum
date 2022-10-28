@@ -269,7 +269,8 @@ class Workload:
             topic = "t" + str(self.zipf.rv() + 1)
             node_topic[node] = topic
 
-            t = asyncio.create_task(self._register_request(node, topic))
+            taskname = 'register-node-' + str(node)
+            t = asyncio.create_task(self._register_request(node, topic), name=taskname)
             tasks.append(t)
 
         # wait for pending requests to finish.
@@ -320,6 +321,7 @@ class Workload:
 
                 # launch the search. when it's done, node is added back into nodes by search_done.
                 print('[{}/{}] Node {} is searching for topic: {}'.format(i, total_requests, node, topic))
+                taskname = 'search-node-' + str(node)
                 t = asyncio.create_task(self._search_request(node, topic))
                 t.add_done_callback(functools.partial(search_done, node))
                 tasks.add(t)
