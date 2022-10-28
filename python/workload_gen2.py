@@ -154,7 +154,6 @@ class Workload:
 
     zipf: TruncatedZipfDist
     client: aiohttp.ClientSession
-    reqlimit: asyncio.Semaphore
     logs_file: io.IOBase
 
     def __init__(self, network, config, out_dir):
@@ -163,8 +162,10 @@ class Workload:
         self.out_dir = out_dir
         self.zipf = TruncatedZipfDist(ZIPF_EXPONENT, config['topic'])
         self.logs_file = open_logs(self.out_dir)
-        self.client = aiohttp.ClientSession(raise_for_status=True)
-        self.reqlimit = asyncio.Semaphore(REQUEST_CONCURRENCY)
+
+        conn = aiohttp.TCPConnector(limit=REQUEST_CONCURRENCY)
+        headers = {'content-type': 'application/json'}
+        self.client = aiohttp.ClientSession(raise_for_status=True, connector=conn, headers=headers)
 
     # close terminates the workload.
     async def close(self):
@@ -180,24 +181,23 @@ class Workload:
         await self.close()
 
     # _post_json sends a request to a node.
-    async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1):
+    async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1, timeout=5):
         last_error = None
-        attempts = 0
-        while attempts < retries:
-            attempts += 1
-            if attempts > 1:
+        for attempt in range(0, retries):
+            if attempt > 1:
                 # delay before retrying
                 await asyncio.sleep(random.uniform(0.5, 1.5))
 
             url = self.network.node_api_url(node)
+            timeout_cfg = aiohttp.ClientTimeout(total=timeout)
             try:
-                async with self.client.post(url, json=payload) as req:
+                async with self.client.post(url, json=payload, timeout=timeout_cfg) as req:
                     return await req.json()
             except aiohttp.ClientError as e:
                 last_error = e
 
         if show_errors:
-            print('Node {} HTTP error after {} attempts: {}'.format(node, attempts, str(last_error)))
+            print('Node {} HTTP error (retries={}): {}'.format(node, retries, str(last_error)))
         return None
 
     # _write_event appends an event to logs.json.
@@ -229,7 +229,6 @@ class Workload:
 
             if bootstrapped == len(nodes):
                 return
-
             if notup > 0:
                 print('{} nodes are not up yet'.format(notup))
                 continue
@@ -247,9 +246,8 @@ class Workload:
             await asyncio.sleep(1)
 
     async def _get_neighbor_count(self, node: int):
-        async with self.reqlimit:
-            payload = rpc("discv5_nodeTable")
-            resp = await self._post_json(node, payload, show_errors=False)
+        payload = rpc("discv5_nodeTable")
+        resp = await self._post_json(node, payload, show_errors=False)
         if resp is None:
             return (node, -1)
         return (node, len(resp['result']))
@@ -287,8 +285,7 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        async with self.reqlimit:
-            resp = await self._post_json(node, payload, retries=6)
+        resp = await self._post_json(node, payload, retries=6)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
@@ -337,7 +334,8 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        resp = await self._post_json(node, payload, retries=6)
+        timeout = self.config.get('rpcSearchTimeoutSeconds', 120) + 10
+        resp = await self._post_json(node, payload, retries=6, timeout=timeout)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
