@@ -180,15 +180,21 @@ class Workload:
         await self.close()
 
     # _post_json sends a request to a node.
-    async def _post_json(self, node: int, payload: dict, show_errors=True):
-        url = self.network.node_api_url(node)
-        try:
-            async with self.client.post(url, json=payload) as req:
-                return await req.json()
-        except aiohttp.ClientError as e:
-            if show_errors:
-                print('Node', node, 'HTTP error: ' + str(e))
-            return None
+    async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1):
+        for attempt in range(0, retries):
+            if attempt > 0:
+                # delay before retrying
+                await asyncio.sleep(random.uniform(0.2, 0.5))
+
+            url = self.network.node_api_url(node)
+            try:
+                async with self.client.post(url, json=payload) as req:
+                    return await req.json()
+            except aiohttp.ClientError as e:
+                if show_errors:
+                    print('Node', node, 'HTTP error: ' + str(e))
+
+        return None
 
     # _write_event appends an event to logs.json.
     def _write_event(self, obj):
@@ -279,7 +285,7 @@ class Workload:
         self._write_event(payload)
 
         async with self.reqlimit:
-            resp = await self._post_json(node, payload)
+            resp = await self._post_json(node, payload, retries=3)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
@@ -329,7 +335,7 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        resp = await self._post_json(node, payload)
+        resp = await self._post_json(node, payload, retries=3)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
