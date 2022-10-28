@@ -16,7 +16,7 @@ from python.network import Network, NetworkLocal
 
 ZIPF_EXPONENT = 1.0
 REQUEST_CONCURRENCY = 128
-SEARCH_CONCURRENCY = 32
+SEARCH_CONCURRENCY = 128
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator
@@ -185,7 +185,7 @@ class Workload:
         for attempt in range(0, retries):
             if attempt > 0:
                 # delay before retrying
-                await asyncio.sleep(random.uniform(0.2, 0.5))
+                await asyncio.sleep(random.uniform(0.2, 0.8))
 
             url = self.network.node_api_url(node)
             try:
@@ -286,7 +286,7 @@ class Workload:
         self._write_event(payload)
 
         async with self.reqlimit:
-            resp = await self._post_json(node, payload, retries=4)
+            resp = await self._post_json(node, payload, retries=6)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
@@ -335,7 +335,7 @@ class Workload:
         payload["time"] = get_current_time_msec()
         self._write_event(payload)
 
-        resp = await self._post_json(node, payload, retries=4)
+        resp = await self._post_json(node, payload, retries=6)
         if resp is not None:
             resp["opid"] = op_id
             resp["time"] = get_current_time_msec()
