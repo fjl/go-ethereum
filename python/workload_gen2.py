@@ -182,10 +182,12 @@ class Workload:
     # _post_json sends a request to a node.
     async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1):
         last_error = None
-        for attempt in range(0, retries):
-            if attempt > 0:
+        attempts = 0
+        while attempts < retries:
+            attempts += 1
+            if attempts > 1:
                 # delay before retrying
-                await asyncio.sleep(random.uniform(0.2, 0.8))
+                await asyncio.sleep(random.uniform(0.5, 1.5))
 
             url = self.network.node_api_url(node)
             try:
@@ -195,7 +197,7 @@ class Workload:
                 last_error = e
 
         if show_errors:
-            print('Node', node, 'HTTP error: ' + str(last_error))
+            print('Node {} HTTP error after {} attempts: {}'.format(node, attempts, str(last_error)))
         return None
 
     # _write_event appends an event to logs.json.
