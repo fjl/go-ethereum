@@ -1,44 +1,22 @@
-import requests
 import json
 import random
-import sys
 import time
-import re
 import hashlib
 import traceback
 import os.path
+import io
+import functools
 
-import math
-import collections
+import asyncio
+import aiohttp
+
 import numpy as np
-import scipy.stats as ss
-import concurrent.futures as futures
 
-from . network import Network, NetworkLocal
+from python.network import Network, NetworkLocal
 
-request_rate = 10  # request rate per second
-zipf_exponent = 1.0
-
-OP_ID = 100
-
-MAX_REQUEST_THREADS = 128
-EXECUTOR = futures.ThreadPoolExecutor(max_workers=MAX_REQUEST_THREADS)
-
-def gen_op_id():
-    global OP_ID
-    OP_ID += 1
-    return OP_ID
-
-# get current time in milliseconds
-def get_current_time_msec():
-    return round(time.time() * 1000)
-
-def get_topic_digest(topicStr):
-    topic_digest = hashlib.sha256(topicStr.encode('utf-8')).hexdigest()
-    # json cannot unmarshal hex string without 0x so adding below
-    topic_digest = '0x' + topic_digest
-    return topic_digest
-
+ZIPF_EXPONENT = 1.0
+REQUEST_CONCURRENCY = 128
+SEARCH_CONCURRENCY = 128
 
 # Following is used to generate random numbers following a zipf distribution
 # Copied below from icarus simulator
@@ -145,41 +123,116 @@ class TruncatedZipfDist(DiscreteDist):
         return self._alpha
 
 
-# waits for all nodes to have a sufficient number of neighbors in the routing table
-def wait_for_nodes_ready(network: Network, config):
-    min_neighbors = min(config['nodes']-1, 10)
-    nodes = list(range(1, config['nodes'] + 1))
-    global EXECUTOR
+OP_ID = 100
+def gen_op_id():
+    global OP_ID
+    OP_ID += 1
+    return OP_ID
 
-    while True:
-        # submit check requests
-        proc = []
-        for node in nodes:
-            p = EXECUTOR.submit(node_neighbor_count, network, node)
-            proc.append((node, p))
-        # check results
-        notup = 0
-        bootstrapped = 0
-        stats = {}
-        for (node, p) in proc:
+# get current time in milliseconds
+def get_current_time_msec():
+    return round(time.time() * 1000)
+
+def get_topic_digest(topicStr):
+    topic_digest = hashlib.sha256(topicStr.encode('utf-8')).hexdigest()
+    # json cannot unmarshal hex string without 0x so adding below
+    topic_digest = '0x' + topic_digest
+    return topic_digest
+
+def open_logs(out_dir):
+    return open(os.path.join(out_dir, "logs", "logs.json"), 'a')
+
+def rpc(method, *args):
+    return {"method": method, "params": args, "jsonrpc": "2.0", "id": 1}
+
+
+# Workload performs the request.
+class Workload:
+    config: dict
+    network: Network
+    out_dir: str
+
+    zipf: TruncatedZipfDist
+    client: aiohttp.ClientSession
+    logs_file: io.IOBase
+
+    def __init__(self, network, config, out_dir):
+        self.config = config
+        self.network = network
+        self.out_dir = out_dir
+        self.zipf = TruncatedZipfDist(ZIPF_EXPONENT, config['topic'])
+        self.logs_file = open_logs(self.out_dir)
+
+        conn = aiohttp.TCPConnector(limit=REQUEST_CONCURRENCY)
+        headers = {'content-type': 'application/json'}
+        self.client = aiohttp.ClientSession(raise_for_status=True, connector=conn, headers=headers)
+
+    # close terminates the workload.
+    async def close(self):
+        await self.client.close()
+        self.client = None
+        self.logs_file.close()
+        self.logs_file = None
+
+    # for 'async with'
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.close()
+
+    # _post_json sends a request to a node.
+    async def _post_json(self, node: int, payload: dict, show_errors=True, retries=1, timeout=5):
+        last_error = None
+        for attempt in range(0, retries):
+            if attempt > 1:
+                # delay before retrying
+                await asyncio.sleep(random.uniform(0.5, 2))
+
+            url = self.network.node_api_url(node)
+            timeout_cfg = aiohttp.ClientTimeout(total=timeout)
             try:
-                count = p.result()
-            except requests.RequestException as e:
-                notup += 1
-            else:
-                if count in stats:
-                    stats[count] += 1
+                async with self.client.post(url, json=payload, timeout=timeout_cfg) as req:
+                    return await req.json()
+            except aiohttp.ClientError as e:
+                last_error = e
+
+        if show_errors:
+            print('Node {} HTTP error (retries={}): {}'.format(node, retries, str(last_error)))
+        return None
+
+    # _write_event appends an event to logs.json.
+    def _write_event(self, obj):
+        json.dump(obj, self.logs_file)
+        self.logs_file.write('\n')
+        self.logs_file.flush()
+
+    # waits for all nodes to have a sufficient number of neighbors in the routing table
+    async def wait_for_nodes_ready(self):
+        min_neighbors = min(self.config['nodes']-1, 10)
+        nodes = list(range(1, self.config['nodes'] + 1))
+
+        while True:
+            requests = [ self._get_neighbor_count(node) for node in nodes ]
+            counts = await asyncio.gather(*requests)
+
+            # check results
+            notup = 0
+            bootstrapped = 0
+            stats = {}
+            for (node, count) in counts:
+                if count == -1:
+                    notup += 1
                 else:
-                    stats[count] = 1
-                if count >= min_neighbors:
-                    bootstrapped += 1
+                    stats[count] = stats.get(count, 0) + 1
+                    if count >= min_neighbors:
+                        bootstrapped += 1
 
-        if bootstrapped == len(nodes):
-            return
+            if bootstrapped == len(nodes):
+                return
+            if notup > 0:
+                print('{} nodes are not up yet'.format(notup))
+                continue
 
-        if notup > 0:
-            print('{} nodes are not up yet'.format(notup))
-        else:
             sstats = {'ok': 0}
             for k in sorted(stats, reverse=True):
                 if k > min_neighbors:
@@ -189,169 +242,124 @@ def wait_for_nodes_ready(network: Network, config):
             print('waiting for {} nodes to become ready.'.format(len(nodes)))
             print('stats: {}'.format(sstats))
 
-        # wait for a bit before retrying
-        time.sleep(1)
+            # wait for a bit before retrying
+            await asyncio.sleep(1)
 
-def node_neighbor_count(network: Network, node):
-    payload = {"method": "discv5_nodeTable", "params": [], "jsonrpc": "2.0", "id": 1}
-    resp = requests.post(network.node_api_url(node), json=payload).json()
-    return len(resp['result'])
+    async def _get_neighbor_count(self, node: int):
+        payload = rpc("discv5_nodeTable")
+        resp = await self._post_json(node, payload, show_errors=False)
+        if resp is None:
+            return (node, -1)
+        return (node, len(resp['result']))
 
+    # register_topic performs topic registrations
+    async def register_topics(self):
+        # send a registration at exponentially distributed
+        # times with average inter departure time of 1/rate
+        nodes = list(range(1, self.config['nodes'] + 1))
+        request_rate = self.config['nodes'] / self.config['adLifetimeSeconds']
+        node_topic = {}
 
-# perform topic registrations
-def register_topics(network: Network, zipf: TruncatedZipfDist, config: dict, logs_file):
-    node_topic = {}
-    time_now = float(time.time())
-    nodes = list(range(1, config['nodes'] + 1))
-   # print("Nodes:"+str(config['nodes'])+" lifetime:"+str(config['adLifetimeSeconds']))
-    request_rate = config['nodes'] / config['adLifetimeSeconds']
-    #print(request_rate)
-    time_next = time_now + random.expovariate(request_rate)
+        tasks = []
+        while len(nodes) > 0:
+            await asyncio.sleep(random.expovariate(request_rate))
 
-    # send a registration at exponentially distributed
-    # times with average inter departure time of 1/rate
-
-    global EXECUTOR
-    proc = []
-    while (len(nodes) > 0):
-        time_now = float(time.time())
-        if time_next > time_now:
-            time.sleep(time_next - time_now)
-        else:
             node = random.choice(nodes)
             nodes.remove(node)
-            topic = "t" + str(zipf.rv() + 1)
+            topic = "t" + str(self.zipf.rv() + 1)
             node_topic[node] = topic
 
-            f = EXECUTOR.submit(send_register, network, node, topic, gen_op_id())
-            f.add_done_callback(lambda f: dump_request_events(f, logs_file))
-            proc.append(f)
-            time_next = time_now + random.expovariate(request_rate)
+            t = asyncio.create_task(self._register_request(node, topic))
+            tasks.append(t)
 
-    futures.wait(proc)
-    return node_topic
+        # wait for pending requests to finish.
+        await asyncio.wait(tasks)
+        return node_topic
 
-def send_register(network: Network, node: int, topic, op_id):
-    topic_digest = get_topic_digest(topic)
-    payload = {
-        "method": "discv5_registerTopic",
-        "params": [topic_digest, op_id],
-        "jsonrpc": "2.0",
-        "id": op_id,
-    }
-    payload["opid"] = op_id
-    payload["time"] = get_current_time_msec()
+    async def _register_request(self, node: int, topic: str):
+        op_id = gen_op_id()
+        topic_digest = get_topic_digest(topic)
+        print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
+        payload = rpc("discv5_registerTopic", topic_digest, op_id)
+        payload["opid"] = op_id
+        payload["time"] = get_current_time_msec()
+        self._write_event(payload)
 
-    print('Node:', node, 'is registering topic:', topic, 'with hash:', topic_digest)
-    resp = requests.post(network.node_api_url(node), json=payload).json()
-    resp["opid"] = op_id
-    resp["time"] = get_current_time_msec()
+        resp = await self._post_json(node, payload, retries=10)
+        if resp is not None:
+            resp["opid"] = op_id
+            resp["time"] = get_current_time_msec()
+            self._write_event(resp)
 
-    return [payload, resp]
+    # search_topics runs searches
+    async def search_topics(self, node_to_topic: dict):
+        total_requests = self.config['nodes'] * self.config['searchIterations']
+        nodes = set(range(1, self.config['nodes'] + 1))
+        searches = { node: 0 for node in nodes }
+        tasks = set()
 
+        def search_done(node: int, task: asyncio.Task):
+            tasks.discard(task)
+            searches[node] += 1
+            if searches[node] < self.config['searchIterations']:
+                nodes.add(node)
 
-def search_topics(network: Network, zipf: TruncatedZipfDist, config: dict, node_to_topic: dict, logs_file):
-    req_total_count = config['nodes'] * config['searchIterations']
-    req_delay = config['lookupTime'] / config['nodes']
-    req_counts = {
-        node: config['searchIterations']
-        for node in range(1, config['nodes'] + 1)
-    }
+        i = 0
+        while len(nodes) > 0 or len(tasks) > 0:
+            # when all nodes are busy, we need to wait for the next task to finish
+            if len(nodes) == 0 or len(tasks) >= SEARCH_CONCURRENCY:
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
-    global EXECUTOR
-    proc = []
-    i = 0
+            if len(nodes) > 0:
+                i += 1
 
-    while len(req_counts) > 0:
-        i += 1
-        node = random.choice(list(req_counts.keys()))
-        req_counts[node] -= 1
-        if req_counts[node] <= 0:
-            del req_counts[node]
+                # pick a random node
+                node = random.choice(list(nodes))
+                topic = node_to_topic[node]
+                nodes.discard(node)
 
-        topic = node_to_topic[node]
-        want_num_results = config['returnedNodes']
+                # launch the search. when it's done, node is added back into nodes by search_done.
+                print('[{}/{}] Node {} is searching for topic: {}'.format(i, total_requests, node, topic))
+                t = asyncio.create_task(self._search_request(node, topic))
+                t.add_done_callback(functools.partial(search_done, node))
+                tasks.add(t)
 
-        print('[{}/{}] Node {} is searching for {} nodes in topic: {}'.format(i, req_total_count, node, want_num_results, topic))
-        f = EXECUTOR.submit(send_lookup, network, node=node, topic=topic, nresults=want_num_results, op_id=gen_op_id())
-        f.add_done_callback(lambda f: dump_request_events(f, logs_file))
-        proc.append(f)
+    async def _search_request(self, node: int, topic: str):
+        want_num_results = self.config['returnedNodes']
+        op_id = gen_op_id()
+        topic_digest = get_topic_digest(topic)
 
-        time.sleep(req_delay)
+        payload = rpc("discv5_topicSearch", topic_digest, want_num_results, op_id)
+        payload["opid"] = op_id
+        payload["time"] = get_current_time_msec()
+        self._write_event(payload)
 
-    futures.wait(proc)
-
-
-def send_lookup(network: Network, node=0, topic=0, nresults=0, op_id=0):
-    topic_digest = get_topic_digest(topic)
-    payload = {
-        "method": "discv5_topicSearch",
-        "params": [topic_digest, nresults, op_id],
-        "jsonrpc": "2.0",
-        "id": op_id,
-    }
-    payload["opid"] = op_id
-    payload["time"] = get_current_time_msec()
-
-    resp = requests.post(network.node_api_url(node), json=payload).json()
-    resp["opid"] = op_id
-    resp["time"] = get_current_time_msec()
-    d = resp['time'] - payload['time']
-    print('Search response: node {} found {} nodes in {}ms'.format(node, len(resp["result"]), d))
-
-    return [payload, resp]
-
-def dump_request_events(f: futures.Future, logs_file):
-    exc = f.exception()
-    if exc:
-        print('error in worker', f)
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
-    else:
-        for obj in f.result():
-            json.dump(obj, logs_file)
-            logs_file.write('\n')
-        logs_file.flush()
+        timeout = self.config.get('rpcSearchTimeoutSeconds', 120) + 10
+        resp = await self._post_json(node, payload, retries=10, timeout=timeout)
+        if resp is not None:
+            resp["opid"] = op_id
+            resp["time"] = get_current_time_msec()
+            result = resp.get("result") or []
+            d = resp['time'] - payload['time']
+            print('Search response: node', node, 'found', len(result), 'nodes in', str(d)+'ms')
+            self._write_event(resp)
 
 
-def read_config(dir):
-    file = os.path.join(dir, 'experiment.json')
-    print('Reading experiment settings from file:', file)
-    config = {}
-    with open(file) as f:
-        config = json.load(f)
-    assert isinstance(config.get('nodes'), int)
-    return config
+async def _run_workload(network: Network, params: dict, out_dir):
+    async with Workload(network, params, out_dir) as w:
+        await w.wait_for_nodes_ready()
 
-def open_logs(out_dir):
-    return open(os.path.join(out_dir, "logs", "logs.json"), 'a')
-
-def run_workload(network: Network, params, out_dir):
-    wait_for_nodes_ready(network, params)
-
-    with open_logs(out_dir) as logs_file:
         print("Starting registrations...")
-        zipf = TruncatedZipfDist(zipf_exponent, params['topic'])
-
-        node_to_topic = register_topics(network, zipf, params, logs_file)
+        node_to_topic = await w.register_topics()
 
         # wait for registrations to complete
         print('Registrations completed, waiting...')
-        time.sleep(params['adLifetimeSeconds'])
+        await asyncio.sleep(params['adLifetimeSeconds'])
 
         # search
         print("Searching...")
-        search_topics(network, zipf, params, node_to_topic, logs_file)
+        await w.search_topics(node_to_topic)
 
 
-def main():
-    # Read experiment parameters.
-    directory = "discv5-test"
-    if len(sys.argv) > 1:
-        directory = sys.argv[1]
-
-    config = read_config(directory)
-    network = NetworkLocal()
-    run_workload(network, config, directory, config)
-
-if __name__ == "__main__":
-    main()
+def run_workload(network: Network, params, out_dir):
+    asyncio.run(_run_workload(network, params, out_dir))
