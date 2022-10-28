@@ -7,7 +7,7 @@ import atexit
 
 from python.header import *
 from python.network import *
-import python.workload_gen2 as workload_gen
+import python.workload_gen as workload_gen
 import python.analyse_logs as analyse_logs
 
 import argparse
