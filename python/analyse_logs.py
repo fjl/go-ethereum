@@ -37,11 +37,11 @@ def get_search_dist_df(config_path):
     topic_mapping = {} #reverse engineer the topic hash
     for i in range(1, 1000):
         topic_mapping[hashlib.sha256(('t'+str(i)).encode('utf-8')).hexdigest()] = i
-    
+
     search_events_heap = []
     nodes = set()
     msg_count = {}
-    
+
     # Read all the topic search events and add them to a heap
     for log_file in os.listdir(log_path):
         if (not log_file.startswith("node-")):
@@ -63,7 +63,7 @@ def get_search_dist_df(config_path):
             if msg_type != 'TOPICNODES/v5' and msg_type != 'NODESv5':
                 continue
             total = int(jsons['tot'])
-            
+
             in_out_s = jsons['msg'].split(' ')[0]
             if(in_out_s != '<<'):
                 continue
@@ -90,13 +90,13 @@ def get_search_dist_df(config_path):
             heapq.heappush(search_events_heap, (unix_time, registrar, searcher))
 
     num_searches = {} # {node : number of search operations at that node}
-    num_searches_ot = {} 
+    num_searches_ot = {}
     init_time = None
 
     # Read the registration events in order
     while len(search_events_heap) > 0:
         timestamp, registrar, searcher = heapq.heappop(reg_events_heap)
-    
+
         # the first event will have timestamp of 0
         if init_time is None:
             init_time = timestamp
@@ -655,7 +655,7 @@ import random
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
-    op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch'] 
+    op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch']
 
     fig, ax = plt.subplots(figsize=(10, 4))
     counter = 0
@@ -676,9 +676,9 @@ def plot_times_discovered(fig_dir,op_df):
 
 def plot_search_results(fig_dir,op_df):
     op_df_exploded = op_df.copy()
-    
+
     op_df_exploded = op_df_exploded.explode('result')
-    
+
     op_df_exploded = op_df_exploded[op_df_exploded['method'] == 'discv5_topicSearch']
     op_df_droppedNone = op_df_exploded.dropna(subset=['result'])
     print("op_df_exploded", op_df_exploded)
@@ -691,7 +691,7 @@ def plot_search_results(fig_dir,op_df):
         axes.bar(list(range(offset, offset + len(y))), y)
         offset += len(y)
         counter += 1
-        
+
     #print("df:", op_df_droppedNone['opid'].value_counts())
     axes.set_xticklabels([])
     axes.set_ylabel("Avg number of lookup results")
@@ -705,7 +705,7 @@ def plot_waiting_time(fig_dir,msg_df):
     # consider only final REGTOPIC message
     df = msg_df.dropna(subset=['ok', 'topic', 'total_wtime'], inplace=False)
     df['topic'] = df['topic'].astype(int)
-    df['total_wtime'] = df['total_wtime'].div(60000)    
+    df['total_wtime'] = df['total_wtime'].div(60000)
     fig, axes = plt.subplots(figsize=(10, 4))
     y = []
     stds = []
@@ -754,7 +754,7 @@ def plot_storage_per_node_over_time(fig_dir, storage_df):
 
 def plot_heatmap(plotname, fig_dir, storage_df):
     fig, axes = plt.subplots(figsize=(10, 4))
-    storage_df = storage_df.set_index('timestamp') 
+    storage_df = storage_df.set_index('timestamp')
     plt.figure(figsize=(15,15)) # large figure to display all the nodes in the y axis
     sns.heatmap(storage_df.T, cmap='plasma', xticklabels=60)
     plt.savefig(fig_dir + plotname + '.'+form,format=form)
@@ -875,39 +875,38 @@ def plot_dfs(out_dir):
     if not os.path.exists(fig_dir):
         os.mkdir(fig_dir)
 
-    #plot_operation_returned(fig_dir,op_df)
+    plot_operation_returned(fig_dir,op_df)
 
-    #plot_search_times(fig_dir,op_df)
+    plot_search_times(fig_dir,op_df)
 
     print("Reading msg df")
     msg_df = pd.read_csv(os.path.join(df_dir, 'msg_df.json'))
 
-    #plot_msg_operation(fig_dir, msg_df)
+    plot_msg_operation(fig_dir, msg_df)
 
-    #plot_msg_topic(fig_dir,msg_df)
+    plot_msg_topic(fig_dir,msg_df)
 
-    #plot_times_discovered(fig_dir,op_df)
+    plot_times_discovered(fig_dir,op_df)
 
-    #plot_times_registered(fig_dir, msg_df)
+    plot_times_registered(fig_dir, msg_df)
 
-    #plot_search_results(fig_dir,op_df)
+    plot_search_results(fig_dir,op_df)
 
     plot_waiting_time(fig_dir,msg_df)
 
-    #plot_mean_waiting_time(fig_dir,msg_df)
+    plot_mean_waiting_time(fig_dir,msg_df)
 
-    #print("Reading storage dfs")
-    #advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
-    #storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
+    print("Reading storage dfs")
+    advert_dist_df = pd.read_json(os.path.join(df_dir, 'advert_dist_df.json'))
+    storage_df = pd.read_json(os.path.join(df_dir, 'storage_df.json'))
 
-    #plot_ads(fig_dir, storage_df, advert_dist_df)
+    plot_ads(fig_dir, storage_df, advert_dist_df)
 
-    #storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
-    #plot_heatmap('storage_heatmap', fig_dir, storage_df_heatmap)
+    storage_df_heatmap = pd.read_json(os.path.join(df_dir, 'storage_heatmap_df.json'))
+    plot_heatmap('storage_heatmap', fig_dir, storage_df_heatmap)
 
     #search_df = pd.read_json(os.path.join(df_dir, 'search_df.json'))
     #plot_heatmap('search_heatmap', fig_dir, storage_df_heatmap)
-    plt.show()
     plt.close()
 
 
