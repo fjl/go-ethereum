@@ -6,13 +6,17 @@ from dateutil.parser import parse
 import pandas as pd
 import hashlib
 import numpy
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
+
 import seaborn as sns
 import heapq # to sort register removal events
 import time
 import concurrent.futures
+
 import matplotlib
+matplotlib.use('Agg')
+
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 font = {'family' : 'normal',
         'weight' : 'bold',
