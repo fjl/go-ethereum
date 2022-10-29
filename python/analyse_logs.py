@@ -655,7 +655,6 @@ def plot_msg_op_topic(fig_dir,msg_df):
         ax.set_ylabel("#Messages")
         fig.savefig(fig_dir + op_type+'_msg_per_topic.'+form,format=form)
 
-import random
 def plot_times_discovered(fig_dir,op_df):
     op_df_exploded = op_df.copy()
     op_df_exploded = op_df_exploded.explode('result')
@@ -666,8 +665,6 @@ def plot_times_discovered(fig_dir,op_df):
     offset = 0
     for topic, group in op_df_exploded.groupby('topic'):
         y = list(group['result'].value_counts().to_dict().values())
-        print(y)
-        random.shuffle(y)
         ax.bar(list(range(offset, offset + len(y))), y)
         offset += len(y)
         counter += 1
