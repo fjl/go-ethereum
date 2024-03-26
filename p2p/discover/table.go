@@ -29,6 +29,7 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"net"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -525,7 +526,7 @@ func (tab *Table) addSeenNode(n *node) {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 	b := tab.bucket(n.ID())
-	if contains(b.entries, n.ID()) {
+	if containsID(b.entries, n.ID()) {
 		// Already in bucket, don't add.
 		return
 	}
@@ -690,7 +691,7 @@ func (tab *Table) bumpInBucket(b *bucket, n *node) bool {
 func (tab *Table) deleteInBucket(b *bucket, n *node) {
 	// Check if the node is actually in the bucket so the removed hook
 	// isn't called multiple times for the same node.
-	if !contains(b.entries, n.ID()) {
+	if !containsID(b.entries, n.ID()) {
 		return
 	}
 	b.entries = deleteNode(b.entries, n)
@@ -698,15 +699,6 @@ func (tab *Table) deleteInBucket(b *bucket, n *node) {
 	if tab.nodeRemovedHook != nil {
 		tab.nodeRemovedHook(b, n)
 	}
-}
-
-func contains(ns []*node, id enode.ID) bool {
-	for _, n := range ns {
-		if n.ID() == id {
-			return true
-		}
-	}
-	return false
 }
 
 // pushNode adds n to the front of list, keeping at most max items.
@@ -722,12 +714,15 @@ func pushNode(list []*node, n *node, max int) ([]*node, *node) {
 
 // deleteNode removes n from list.
 func deleteNode(list []*node, n *node) []*node {
-	for i := range list {
-		if list[i].ID() == n.ID() {
-			return append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
+	return slices.DeleteFunc(list, func(elem *node) bool {
+		return n.ID() == elem.ID()
+	})
+}
+
+func containsID(ns []*node, id enode.ID) bool {
+	return slices.ContainsFunc(ns, func(elem *node) bool {
+		return elem.ID() == id
+	})
 }
 
 // nodesByDistance is a list of nodes, ordered by distance to target.

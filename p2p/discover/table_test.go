@@ -83,11 +83,11 @@ func testPingReplace(t *testing.T, newNodeIsResponding, lastInBucketIsResponding
 	if l := len(tab.bucket(pingSender.ID()).entries); l != wantSize {
 		t.Errorf("wrong bucket size after bond: got %d, want %d", l, wantSize)
 	}
-	if found := contains(tab.bucket(pingSender.ID()).entries, last.ID()); found != lastInBucketIsResponding {
+	if found := containsID(tab.bucket(pingSender.ID()).entries, last.ID()); found != lastInBucketIsResponding {
 		t.Errorf("last entry found: %t, want: %t", found, lastInBucketIsResponding)
 	}
 	wantNewEntry := newNodeIsResponding && !lastInBucketIsResponding
-	if found := contains(tab.bucket(pingSender.ID()).entries, pingSender.ID()); found != wantNewEntry {
+	if found := containsID(tab.bucket(pingSender.ID()).entries, pingSender.ID()); found != wantNewEntry {
 		t.Errorf("new entry found: %t, want: %t", found, wantNewEntry)
 	}
 }
@@ -227,7 +227,7 @@ func TestTable_findnodeByID(t *testing.T) {
 		// check that the result nodes have minimum distance to target.
 		for _, b := range tab.buckets {
 			for _, n := range b.entries {
-				if contains(result, n.ID()) {
+				if containsID(result, n.ID()) {
 					continue // don't run the check below for nodes in result
 				}
 				farthestResult := result[len(result)-1].ID()
