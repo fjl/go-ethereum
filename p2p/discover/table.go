@@ -658,20 +658,13 @@ func (tab *Table) replace(b *bucket, last *node) *node {
 		tab.deleteInBucket(b, last)
 		return nil
 	}
-
-	// Pick a replacement. Here we need to ensure we have a replacement that
-	// works w.r.t. the IP limits.
-	for _, i := range tab.rand.Perm(len(b.replacements)) {
-		r := b.replacements[i]
-		if tab.addIP(b, r.IP()) {
-			b.replacements = deleteNode(b.replacements, r)
-			b.entries[len(b.entries)-1] = r
-			r.addedAt = time.Now()
-			tab.removeIP(b, last.IP())
-			return r
-		}
-	}
-	return nil
+	// Pick a replacement.
+	r := b.replacements[tab.rand.Intn(len(b.replacements))]
+	b.replacements = deleteNode(b.replacements, r)
+	b.entries[len(b.entries)-1] = r
+	r.addedAt = time.Now()
+	tab.removeIP(b, last.IP())
+	return r
 }
 
 // bumpInBucket moves the given node to the front of the bucket entry list
