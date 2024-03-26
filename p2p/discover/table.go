@@ -535,7 +535,7 @@ func (tab *Table) addSeenNode(n *node) {
 		tab.addReplacement(b, n)
 		return
 	}
-	if !tab.addIP(b, n.IP()) {
+	if !tab.addIP(b, n.IP(), "addSeenNode") {
 		// Can't add: IP limit reached.
 		return
 	}
@@ -579,7 +579,7 @@ func (tab *Table) addVerifiedNode(n *node) {
 		tab.addReplacement(b, n)
 		return
 	}
-	if !tab.addIP(b, n.IP()) {
+	if !tab.addIP(b, n.IP(), "addVerifiedNode") {
 		// Can't add: IP limit reached.
 		return
 	}
@@ -602,7 +602,7 @@ func (tab *Table) delete(node *node) {
 	tab.deleteInBucket(tab.bucket(node.ID()), node)
 }
 
-func (tab *Table) addIP(b *bucket, ip net.IP) bool {
+func (tab *Table) addIP(b *bucket, ip net.IP, operation string) bool {
 	if len(ip) == 0 {
 		return false // Nodes without IP cannot be added.
 	}
@@ -610,11 +610,11 @@ func (tab *Table) addIP(b *bucket, ip net.IP) bool {
 		return true
 	}
 	if !tab.ips.Add(ip) {
-		tab.log.Debug("IP exceeds table limit", "ip", ip)
+		tab.log.Debug("IP exceeds table limit", "ip", ip, "operation", operation)
 		return false
 	}
 	if !b.ips.Add(ip) {
-		tab.log.Debug("IP exceeds bucket limit", "ip", ip)
+		tab.log.Debug("IP exceeds bucket limit", "ip", ip, "b", b.index, "operation", operation)
 		tab.ips.Remove(ip)
 		return false
 	}
@@ -635,7 +635,7 @@ func (tab *Table) addReplacement(b *bucket, n *node) {
 			return // already in list
 		}
 	}
-	if !tab.addIP(b, n.IP()) {
+	if !tab.addIP(b, n.IP(), "addReplacement") {
 		return
 	}
 	var removed *node
@@ -675,9 +675,9 @@ func (tab *Table) bumpInBucket(b *bucket, n *node) bool {
 			if !n.IP().Equal(b.entries[i].IP()) {
 				// Endpoint has changed, ensure that the new IP fits into table limits.
 				tab.removeIP(b, b.entries[i].IP())
-				if !tab.addIP(b, n.IP()) {
+				if !tab.addIP(b, n.IP(), "bumpInBucket-update") {
 					// It doesn't, put the previous one back.
-					tab.addIP(b, b.entries[i].IP())
+					tab.addIP(b, b.entries[i].IP(), "bumpInBucket-undoUpdate")
 					return false
 				}
 			}
