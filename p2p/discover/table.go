@@ -630,10 +630,8 @@ func (tab *Table) removeIP(b *bucket, ip net.IP) {
 }
 
 func (tab *Table) addReplacement(b *bucket, n *node) {
-	for _, e := range b.replacements {
-		if e.ID() == n.ID() {
-			return // already in list
-		}
+	if containsID(b.replacements, n.ID()) {
+		return // already in list
 	}
 	if !tab.addIP(b, n.IP(), "addReplacement") {
 		return
