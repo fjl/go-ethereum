@@ -333,32 +333,32 @@ func (t *UDPv5) RandomNodes() enode.Iterator {
 		// case and run the bootstrapping logic.
 		<-t.tab.refresh()
 	}
-
-	return newLookupIterator(t.closeCtx, t.newRandomLookup)
+	r := newRandomRouteV5(&t.tab.rand)
+	return newWalkIterator(t.tab, r)
 }
 
 // Lookup performs a recursive lookup for the given target.
 // It returns the closest nodes to target.
 func (t *UDPv5) Lookup(target enode.ID) []*enode.Node {
-	return t.newLookup(t.closeCtx, target).run()
+	return runWalk(t.closeCtx, t, t.newLookupWalk(target))
 }
 
 // lookupRandom looks up a random target.
 // This is needed to satisfy the transport interface.
 func (t *UDPv5) lookupRandom() []*enode.Node {
-	return t.newRandomLookup(t.closeCtx).run()
+	var target enode.ID
+	crand.Read(target[:])
+	return runWalk(t.closeCtx, t, t.newLookupWalk(target))
 }
 
 // lookupSelf looks up our own node ID.
 // This is needed to satisfy the transport interface.
 func (t *UDPv5) lookupSelf() []*enode.Node {
-	return t.newLookup(t.closeCtx, t.Self().ID()).run()
+	return runWalk(t.closeCtx, t, t.newLookupWalk(t.Self().ID()))
 }
 
-func (t *UDPv5) newRandomLookup(ctx context.Context) *lookup {
-	var target enode.ID
-	crand.Read(target[:])
-	return t.newLookup(ctx, target)
+func (t *UDPv5) newLookupWalk(target enode.ID) *walk {
+	return newWalk(t.tab, newLookupRouteV5(target))
 }
 
 func (t *UDPv5) newLookup(ctx context.Context, target enode.ID) *lookup {
@@ -367,41 +367,14 @@ func (t *UDPv5) newLookup(ctx context.Context, target enode.ID) *lookup {
 	})
 }
 
-// lookupWorker performs FINDNODE calls against a single node during lookup.
-func (t *UDPv5) lookupWorker(destNode *enode.Node, target enode.ID) ([]*enode.Node, error) {
-	var (
-		dists = lookupDistances(target, destNode.ID())
-		nodes = nodesByDistance{target: target}
-		err   error
-	)
-	var r []*enode.Node
-	r, err = t.Findnode(destNode, dists)
+// runLookupQuery performs a FINDNODE query.
+func (t *UDPv5) runLookupQuery(ctx context.Context, q *query) {
+	r, err := t.findnode(q.node, q.target.([]uint))
 	if errors.Is(err, errClosed) {
-		return nil, err
+		// Prevent accumulating results on shutdown.
+		r = nil
 	}
-	for _, n := range r {
-		if n.ID() != t.Self().ID() {
-			nodes.push(n, findnodeResultLimit)
-		}
-	}
-	return nodes.entries, err
-}
-
-// lookupDistances computes the distance parameter for FINDNODE calls to dest.
-// It chooses distances adjacent to logdist(target, dest), e.g. for a target
-// with logdist(target, dest) = 255 the result is [255, 256, 254].
-func lookupDistances(target, dest enode.ID) (dists []uint) {
-	td := enode.LogDist(target, dest)
-	dists = append(dists, uint(td))
-	for i := 1; len(dists) < lookupRequestLimit; i++ {
-		if td+i <= 256 {
-			dists = append(dists, uint(td+i))
-		}
-		if td-i > 0 {
-			dists = append(dists, uint(td-i))
-		}
-	}
-	return dists
+	q.resp, q.err = r, err
 }
 
 // ping calls PING on a node and waits for a PONG response.
@@ -463,6 +436,9 @@ func (t *UDPv5) waitForNodes(c *callV5, distances []uint) ([]*enode.Node, error)
 				node, err := t.verifyResponseNode(c, record, distances, seen)
 				if err != nil {
 					t.log.Debug("Invalid record in "+response.Name(), "id", c.node.ID(), "err", err)
+					continue
+				}
+				if node.ID() == t.Self().ID() {
 					continue
 				}
 				nodes = append(nodes, node)

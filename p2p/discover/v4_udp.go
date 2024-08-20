@@ -271,6 +271,12 @@ func (t *UDPv4) makePing(toaddr netip.AddrPort) *v4wire.Ping {
 	}
 }
 
+// RandomNodes is an iterator yielding nodes from a random walk of the DHT.
+func (t *UDPv4) RandomNodes() enode.Iterator {
+	r := newRandomRouteV4(&t.tab.rand)
+	return newWalkIterator(t.tab, r)
+}
+
 // LookupPubkey finds the closest nodes to the given public key.
 func (t *UDPv4) LookupPubkey(key *ecdsa.PublicKey) []*enode.Node {
 	if t.tab.len() == 0 {
@@ -278,41 +284,38 @@ func (t *UDPv4) LookupPubkey(key *ecdsa.PublicKey) []*enode.Node {
 		// case and run the bootstrapping logic.
 		<-t.tab.refresh()
 	}
-	return t.newLookup(t.closeCtx, v4wire.EncodePubkey(key)).run()
-}
-
-// RandomNodes is an iterator yielding nodes from a random walk of the DHT.
-func (t *UDPv4) RandomNodes() enode.Iterator {
-	return newLookupIterator(t.closeCtx, t.newRandomLookup)
+	return runWalk(t.closeCtx, t, t.newLookupWalk(v4wire.EncodePubkey(key)))
 }
 
 // lookupRandom implements transport.
 func (t *UDPv4) lookupRandom() []*enode.Node {
-	return t.newRandomLookup(t.closeCtx).run()
+	var target v4wire.Pubkey
+	crand.Read(target[:])
+	return runWalk(t.closeCtx, t, t.newLookupWalk(target))
 }
 
 // lookupSelf implements transport.
 func (t *UDPv4) lookupSelf() []*enode.Node {
-	pubkey := v4wire.EncodePubkey(&t.priv.PublicKey)
-	return t.newLookup(t.closeCtx, pubkey).run()
+	target := v4wire.EncodePubkey(t.Self().Pubkey())
+	return runWalk(t.closeCtx, t, t.newLookupWalk(target))
 }
 
-func (t *UDPv4) newRandomLookup(ctx context.Context) *lookup {
-	var target v4wire.Pubkey
-	crand.Read(target[:])
-	return t.newLookup(ctx, target)
+func (t *UDPv4) newLookupWalk(targetKey v4wire.Pubkey) *walk {
+	return newWalk(t.tab, newLookupRouteV4(targetKey))
 }
 
-func (t *UDPv4) newLookup(ctx context.Context, targetKey v4wire.Pubkey) *lookup {
-	target := enode.ID(crypto.Keccak256Hash(targetKey[:]))
-	it := newLookup(ctx, t.tab, target, func(n *enode.Node) ([]*enode.Node, error) {
-		addr, ok := n.UDPEndpoint()
-		if !ok {
-			return nil, errNoUDPEndpoint
-		}
-		return t.findnode(n.ID(), addr, targetKey)
-	})
-	return it
+// runLookupQuery performs a FINDNODE query.
+func (t *UDPv4) runLookupQuery(ctx context.Context, q *query) {
+	addr, ok := q.node.UDPEndpoint()
+	if !ok {
+		q.err = errNoUDPEndpoint
+		return
+	}
+	r, err := t.findnode(q.node.ID(), addr, q.target.(v4wire.Pubkey))
+	if errors.Is(err, errClosed) {
+		r = nil // prevent accumulating results on shutdown.
+	}
+	q.resp, q.err = r, err
 }
 
 // findnode sends a findnode request to the given node and waits until

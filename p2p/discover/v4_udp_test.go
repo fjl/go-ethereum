@@ -75,6 +75,7 @@ func newUDPTest(t *testing.T) *udpTest {
 		Log:        testlog.Logger(t, log.LvlTrace),
 	})
 	test.table = test.udp.tab
+
 	// Wait for initial refresh so the table doesn't send unexpected findnode.
 	<-test.table.initDone
 	return test

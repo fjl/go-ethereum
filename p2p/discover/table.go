@@ -62,12 +62,13 @@ const (
 // itself up-to-date by verifying the liveness of neighbors and requesting their node
 // records when announcements of a new record version are received.
 type Table struct {
-	mutex        sync.Mutex        // protects buckets, bucket content, nursery, rand
-	buckets      [nBuckets]*bucket // index of known nodes by distance
-	nursery      []*enode.Node     // bootstrap nodes
-	rand         reseedingRandom   // source of randomness, periodically reseeded
-	ips          netutil.DistinctNetSet
-	revalidation tableRevalidation
+	mutex          sync.Mutex        // protects buckets, bucket content, nursery, rand
+	buckets        [nBuckets]*bucket // index of known nodes by distance
+	nursery        []*enode.Node     // bootstrap nodes
+	rand           reseedingRandom   // source of randomness, periodically reseeded
+	randomNodesBuf []*enode.Node     // buffer for readRandomNodes
+	ips            netutil.DistinctNetSet
+	revalidation   tableRevalidation
 
 	db  *enode.DB // database of known nodes
 	net transport
@@ -94,6 +95,7 @@ type transport interface {
 	RequestENR(*enode.Node) (*enode.Node, error)
 	lookupRandom() []*enode.Node
 	lookupSelf() []*enode.Node
+	runLookupQuery(context.Context, *query)
 	ping(*enode.Node) (seq uint64, err error)
 }
 
@@ -291,6 +293,31 @@ func (tab *Table) appendBucketNodes(dist uint, result []*enode.Node, checkLive b
 		result[i], result[j] = result[j], result[i]
 	})
 	return result
+}
+
+// readRandomNodes fills the given slice with random nodes from the table.
+// It returns the number of nodes added to buf.
+func (tab *Table) readRandomNodes(buf []*enode.Node) (n int) {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	// Get the list of all live nodes.
+	if tab.randomNodesBuf == nil {
+		tab.randomNodesBuf = make([]*enode.Node, 0, nBuckets*bucketSize)
+	}
+	allNodes := tab.randomNodesBuf[:0]
+	for _, b := range &tab.buckets {
+		for _, n := range b.entries {
+			if n.isValidatedLive {
+				allNodes = append(allNodes, n.Node)
+			}
+		}
+	}
+	// Shuffle the list and copy to output.
+	tab.rand.Shuffle(len(allNodes), func(i, j int) {
+		allNodes[i], allNodes[j] = allNodes[j], allNodes[i]
+	})
+	return copy(buf, allNodes)
 }
 
 // len returns the number of nodes in the table.

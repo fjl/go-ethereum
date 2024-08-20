@@ -107,6 +107,7 @@ type randomSource interface {
 	Intn(int) int
 	Int63n(int64) int64
 	Shuffle(int, func(int, int))
+	Read([]byte) (int, error)
 }
 
 // reseedingRandom is a random number generator that tracks when it was last re-seeded.
@@ -142,4 +143,10 @@ func (r *reseedingRandom) Shuffle(n int, swap func(i, j int)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.cur.Shuffle(n, swap)
+}
+
+func (r *reseedingRandom) Read(b []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cur.Read(b)
 }

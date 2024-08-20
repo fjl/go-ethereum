@@ -18,6 +18,7 @@ package discover
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
@@ -162,6 +163,10 @@ func (t *pingRecorder) updateRecord(n *enode.Node) {
 func (t *pingRecorder) Self() *enode.Node           { return nullNode }
 func (t *pingRecorder) lookupSelf() []*enode.Node   { return nil }
 func (t *pingRecorder) lookupRandom() []*enode.Node { return nil }
+
+func (t *pingRecorder) runLookupQuery(ctx context.Context, q *query) {
+	q.err = errors.New("not implemented")
+}
 
 func (t *pingRecorder) waitPing(timeout time.Duration) *enode.Node {
 	t.mu.Lock()
