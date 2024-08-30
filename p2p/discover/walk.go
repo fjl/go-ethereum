@@ -18,6 +18,7 @@ package discover
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
@@ -112,6 +113,7 @@ func runWalk(ctx context.Context, transport walkTransport, w *walk) []*enode.Nod
 		if q != nil && !shutdown {
 			go func() {
 				transport.runLookupQuery(ctx, q)
+				fmt.Printf("q(%x): %v -> %d\n", q.node.ID().Bytes()[:8], q.target, len(q.resp))
 				replyCh <- q
 			}()
 		}

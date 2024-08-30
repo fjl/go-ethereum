@@ -263,7 +263,6 @@ func (tab *Table) findnodeByID(target enode.ID, nresults int, preferLive bool) *
 			}
 		}
 	}
-
 	if preferLive && len(liveNodes.entries) > 0 {
 		return liveNodes
 	}
@@ -392,7 +391,6 @@ loop:
 	for {
 		nextTime := tab.revalidation.run(tab, tab.cfg.Clock.Now())
 		revalTimer.Schedule(nextTime)
-
 		select {
 		case <-reseedRandTimer.C:
 			tab.rand.seed()

@@ -25,6 +25,7 @@ type lookupRoute struct {
 	target any
 	list   nodesByDistance
 	asked  map[enode.ID]bool
+	isV5   bool
 }
 
 func newLookupRouteV4(target v4wire.Pubkey) *lookupRoute {
@@ -32,7 +33,7 @@ func newLookupRouteV4(target v4wire.Pubkey) *lookupRoute {
 }
 
 func newLookupRouteV5(target enode.ID) *lookupRoute {
-	return &lookupRoute{target: target, list: nodesByDistance{target: target}}
+	return &lookupRoute{target: target, list: nodesByDistance{target: target}, isV5: true}
 }
 
 func (l *lookupRoute) init(tab *Table) bool {
@@ -46,13 +47,23 @@ func (l *lookupRoute) init(tab *Table) bool {
 }
 
 func (l *lookupRoute) nextHop() (*enode.Node, any) {
+	var next *enode.Node
 	for _, n := range l.list.entries {
 		if !l.asked[n.ID()] {
 			l.asked[n.ID()] = true
-			return n, l.target
+			next = n
+			break
 		}
 	}
-	return nil, l.target
+
+	if l.isV5 {
+		var t []uint
+		if next != nil {
+			t = lookupDistances(l.list.target, next.ID())
+		}
+		return next, t
+	}
+	return next, l.target
 }
 
 func (l *lookupRoute) addFoundNodes(ns []*enode.Node) {

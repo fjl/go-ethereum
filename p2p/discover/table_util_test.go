@@ -135,6 +135,7 @@ type pingRecorder struct {
 	records map[enode.ID]*enode.Node
 	pinged  []*enode.Node
 	n       *enode.Node
+	self    *enode.Node
 }
 
 func newPingRecorder() *pingRecorder {
@@ -160,7 +161,13 @@ func (t *pingRecorder) updateRecord(n *enode.Node) {
 }
 
 // Stubs to satisfy the transport interface.
-func (t *pingRecorder) Self() *enode.Node           { return nullNode }
+func (t *pingRecorder) Self() *enode.Node {
+	if t.self != nil {
+		return t.self
+	}
+	return nullNode
+}
+
 func (t *pingRecorder) lookupSelf() []*enode.Node   { return nil }
 func (t *pingRecorder) lookupRandom() []*enode.Node { return nil }
 
