@@ -122,26 +122,16 @@ func (miner *Miner) generateWork(params *generateParams, witness bool) *newPaylo
 	if miner.chainConfig.IsPrague(work.header.Number, work.header.Time) {
 		requests = [][]byte{}
 		// EIP-6110 deposits
-		depositRequests, err := core.ParseDepositLogs(allLogs, miner.chainConfig)
-		if err != nil {
+		if err := core.ParseDepositLogs(&requests, allLogs, miner.chainConfig); err != nil {
 			return &newPayloadResult{err: err}
-		}
-		if depositRequests != nil {
-			requests = append(requests, depositRequests)
 		}
 		// create EVM for system calls
 		blockContext := core.NewEVMBlockContext(work.header, miner.chain, &work.header.Coinbase)
 		vmenv := vm.NewEVM(blockContext, vm.TxContext{}, work.state, miner.chainConfig, vm.Config{})
-		// EIP-7002 withdrawals
-		withdrawalRequests := core.ProcessWithdrawalQueue(vmenv, work.state)
-		if withdrawalRequests != nil {
-			requests = append(requests, withdrawalRequests)
-		}
+		// EIP-7002
+		core.ProcessWithdrawalQueue(&requests, vmenv, work.state)
 		// EIP-7251 consolidations
-		consolidationRequests := core.ProcessConsolidationQueue(vmenv, work.state)
-		if consolidationRequests != nil {
-			requests = append(requests, consolidationRequests)
-		}
+		core.ProcessConsolidationQueue(&requests, vmenv, work.state)
 	}
 	if requests != nil {
 		reqHash := types.CalcRequestsHash(requests)
