@@ -106,18 +106,25 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Read requests if Prague is enabled.
 	var requests [][]byte
 	if p.config.IsPrague(block.Number(), block.Time()) {
+		requests = [][]byte{}
 		// EIP-6110 deposits
 		depositRequests, err := ParseDepositLogs(allLogs, p.config)
 		if err != nil {
 			return nil, err
 		}
-		requests = append(requests, depositRequests)
+		if depositRequests != nil {
+			requests = append(requests, depositRequests)
+		}
 		// EIP-7002 withdrawals
 		withdrawalRequests := ProcessWithdrawalQueue(vmenv, tracingStateDB)
-		requests = append(requests, withdrawalRequests)
+		if withdrawalRequests != nil {
+			requests = append(requests, withdrawalRequests)
+		}
 		// EIP-7251 consolidations
 		consolidationRequests := ProcessConsolidationQueue(vmenv, tracingStateDB)
-		requests = append(requests, consolidationRequests)
+		if consolidationRequests != nil {
+			requests = append(requests, consolidationRequests)
+		}
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
@@ -308,6 +315,9 @@ func processRequestsSystemCall(vmenv *vm.EVM, statedb vm.StateDB, requestType by
 	statedb.AddAddressToAccessList(addr)
 	ret, _, _ := vmenv.Call(vm.AccountRef(msg.From), *msg.To, msg.Data, 30_000_000, common.U2560)
 	statedb.Finalise(true)
+	if len(ret) == 0 {
+		return nil
+	}
 
 	// Create withdrawals requestsData with prefix 0x01
 	requestsData := make([]byte, len(ret)+1)
@@ -328,6 +338,9 @@ func ParseDepositLogs(logs []*types.Log, config *params.ChainConfig) ([]byte, er
 			}
 			deposits = append(deposits, request...)
 		}
+	}
+	if len(deposits) == 1 {
+		deposits = nil
 	}
 	return deposits, nil
 }
