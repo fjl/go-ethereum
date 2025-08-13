@@ -131,10 +131,11 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
 	isOsaka := config.IsOsaka(config.LondonBlock, headTimestamp)
 	bcfg := latestBlobConfig(config, headTimestamp)
-	return calcExcessBlobGas(isOsaka, bcfg, parent)
+	pcfg := latestBlobConfig(config, parent.Time)
+	return calcExcessBlobGas(isOsaka, pcfg, bcfg, parent)
 }
 
-func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uint64 {
+func calcExcessBlobGas(isOsaka bool, pcfg, bcfg *BlobConfig, parent *types.Header) uint64 {
 	var parentExcessBlobGas, parentBlobGasUsed uint64
 	if parent.ExcessBlobGas != nil {
 		parentExcessBlobGas = *parent.ExcessBlobGas
@@ -143,7 +144,7 @@ func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uin
 
 	var (
 		excessBlobGas = parentExcessBlobGas + parentBlobGasUsed
-		targetGas     = uint64(bcfg.Target) * params.BlobTxBlobGasPerBlob
+		targetGas     = uint64(pcfg.Target) * params.BlobTxBlobGasPerBlob
 	)
 	if excessBlobGas < targetGas {
 		return 0
@@ -158,7 +159,7 @@ func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uin
 			blobPrice    = bcfg.blobPrice(excessBlobGas)
 		)
 		if reservePrice.Cmp(blobPrice) > 0 {
-			scaledExcess := parentBlobGasUsed * uint64(bcfg.Max-bcfg.Target) / uint64(bcfg.Max)
+			scaledExcess := parentBlobGasUsed * uint64(pcfg.Max-pcfg.Target) / uint64(pcfg.Max)
 			return parentExcessBlobGas + scaledExcess
 		}
 	}
