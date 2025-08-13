@@ -93,14 +93,20 @@ func TestCalcBlobFee(t *testing.T) {
 
 func TestCalcBlobFee2(t *testing.T) {
 	zero := uint64(0)
-	one := uint64(1)
+	bpo1 := uint64(1754836608)
+	bpo2 := uint64(1754934912)
+	bpo3 := uint64(1755033216)
 
 	tests := []struct {
 		excessBlobGas uint64
 		blobGasUsed   uint64
 		blobfee       uint64
+		basefee       uint64
+		parenttime    uint64
+		headertime    uint64
 	}{
-		{5149252, 1310720, 5617366},
+		{5149252, 1310720, 5617366, 30, 1754904516, 1754904528},
+		{19251039, 2490368, 20107103, 50, 1755033204, 1755033216},
 	}
 	for i, tt := range tests {
 		config := &params.ChainConfig{
@@ -108,8 +114,9 @@ func TestCalcBlobFee2(t *testing.T) {
 			CancunTime:  &zero,
 			PragueTime:  &zero,
 			OsakaTime:   &zero,
-			BPO1Time:    &zero,
-			BPO2Time:    &one,
+			BPO1Time:    &bpo1,
+			BPO2Time:    &bpo2,
+			BPO3Time:    &bpo3,
 			BlobScheduleConfig: &params.BlobScheduleConfig{
 				Cancun: params.DefaultCancunBlobConfig,
 				Prague: params.DefaultPragueBlobConfig,
@@ -124,14 +131,19 @@ func TestCalcBlobFee2(t *testing.T) {
 					Max:            21,
 					UpdateFraction: 13739630,
 				},
+				BPO3: &params.BlobConfig{
+					Target:         21,
+					Max:            32,
+					UpdateFraction: 20609697,
+				},
 			}}
 		parent := &types.Header{
 			ExcessBlobGas: &tt.excessBlobGas,
 			BlobGasUsed:   &tt.blobGasUsed,
-			BaseFee:       big.NewInt(30),
-			Time:          0,
+			BaseFee:       big.NewInt(int64(tt.basefee)),
+			Time:          tt.parenttime,
 		}
-		have := CalcExcessBlobGas(config, parent, 1)
+		have := CalcExcessBlobGas(config, parent, tt.headertime)
 		if have != tt.blobfee {
 			t.Errorf("test %d: blobfee mismatch: have %v want %v", i, have, tt.blobfee)
 		}
