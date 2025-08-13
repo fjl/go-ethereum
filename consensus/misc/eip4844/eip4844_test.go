@@ -91,7 +91,7 @@ func TestCalcBlobFee(t *testing.T) {
 	}
 }
 
-func TestCalcBlobFee2(t *testing.T) {
+func TestCalcBlobFeePostOsaka(t *testing.T) {
 	zero := uint64(0)
 	bpo1 := uint64(1754836608)
 	bpo2 := uint64(1754934912)
