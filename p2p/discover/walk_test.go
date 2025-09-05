@@ -122,7 +122,7 @@ func newRouteSim(cfg routeSimConfig) *routeSim {
 	// connect nodes
 	for index, id := range rs.ids {
 		// get neighbors left side
-		for i := 1; i < 16; i++ {
+		for i := 1; i < min(16, i); i++ {
 			ni := (index - i) % len(rs.ids)
 			rs.crossConnect(id, rs.ids[ni])
 		}
