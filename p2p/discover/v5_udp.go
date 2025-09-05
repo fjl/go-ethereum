@@ -361,15 +361,9 @@ func (t *UDPv5) newLookupWalk(target enode.ID) *walk {
 	return newWalk(t.tab, newLookupRouteV5(target))
 }
 
-func (t *UDPv5) newLookup(ctx context.Context, target enode.ID) *lookup {
-	return newLookup(ctx, t.tab, target, func(n *enode.Node) ([]*enode.Node, error) {
-		return t.lookupWorker(n, target)
-	})
-}
-
 // runLookupQuery performs a FINDNODE query.
 func (t *UDPv5) runLookupQuery(ctx context.Context, q *query) {
-	r, err := t.findnode(q.node, q.target.([]uint))
+	r, err := t.Findnode(q.node, q.target.([]uint))
 	if errors.Is(err, errClosed) {
 		// Prevent accumulating results on shutdown.
 		r = nil
