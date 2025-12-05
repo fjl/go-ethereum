@@ -271,7 +271,7 @@ func (tab *Table) findnodeByID(target enode.ID, nresults int, preferLive bool) *
 
 // appendBucketNodes adds nodes at the given distance to the result slice.
 // This is used by the FINDNODE/v5 handler.
-func (tab *Table) appendBucketNodes(dist uint, result []*enode.Node, checkLive bool) []*enode.Node {
+func (tab *Table) appendBucketNodes(dist uint, result []*enode.Node, validate func(*tableNode) bool) []*enode.Node {
 	if dist > 256 {
 		return result
 	}
@@ -281,7 +281,7 @@ func (tab *Table) appendBucketNodes(dist uint, result []*enode.Node, checkLive b
 
 	tab.mutex.Lock()
 	for _, n := range tab.bucketAtDistance(int(dist)).entries {
-		if !checkLive || n.isValidatedLive {
+		if validate != nil && validate(n) {
 			result = append(result, n.Node)
 		}
 	}

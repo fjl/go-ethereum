@@ -931,13 +931,19 @@ func (t *UDPv5) collectTableNodes(rip netip.Addr, distances []uint, limit int) [
 		}
 		processed[dist] = struct{}{}
 
-		checkLive := !t.tab.cfg.NoFindnodeLivenessCheck
-		for _, n := range t.tab.appendBucketNodes(dist, bn[:0], checkLive) {
-			// Apply some pre-checks to avoid sending invalid nodes.
-			// Note liveness is checked by appendLiveNodes.
-			if netutil.CheckRelayAddr(rip, n.IPAddr()) != nil {
-				continue
+		validate := func(tn *tableNode) bool {
+			// Pre-checks to avoid sending invalid nodes.
+			// Check liveness of nodes we hand out to others.
+			if !t.tab.cfg.NoFindnodeLivenessCheck && !tn.isValidatedLive {
+				return false
 			}
+			// Do not relay invalid IP.
+			if netutil.CheckRelayAddr(rip, tn.IPAddr()) != nil {
+				return false
+			}
+			return true
+		}
+		for _, n := range t.tab.appendBucketNodes(dist, bn[:0], validate) {
 			nodes = append(nodes, n)
 			if len(nodes) >= limit {
 				return nodes
