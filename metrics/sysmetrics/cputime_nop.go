@@ -1,4 +1,4 @@
-// Copyright 2015 The go-ethereum Authors
+// Copyright 2018 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,12 +14,13 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package metrics
+//go:build windows || js || tinygo
+// +build windows js tinygo
 
-// DiskStats is the per process disk io stats.
-type DiskStats struct {
-	ReadCount  int64 // Number of read operations executed
-	ReadBytes  int64 // Total number of bytes read
-	WriteCount int64 // Number of write operations executed
-	WriteBytes int64 // Total number of byte written
+package sysmetrics
+
+// getProcessCPUTime returns 0 on Windows as there is no system call to resolve
+// the actual process' CPU time.
+func getProcessCPUTime() float64 {
+	return 0
 }

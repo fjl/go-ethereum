@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/metrics/sysmetrics"
 )
 
 func TestCollectRuntimeMetrics(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCollectRuntimeMetrics(t *testing.T) {
 		fmt.Printf("var %v = %q\n", path, f.Bytes())
 	}
 	time.Sleep(2 * time.Second)
-	stats := metrics.ReadRuntimeStats()
+	stats := sysmetrics.ReadRuntimeStats()
 	serialize("schedlatency", stats.SchedLatency)
 	serialize("gcpauses", stats.GCPauses)
 }

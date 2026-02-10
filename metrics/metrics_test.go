@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-func TestReadRuntimeValues(t *testing.T) {
-	var v runtimeStats
-	readRuntimeStats(&v)
-	t.Logf("%+v", v)
-}
-
 func BenchmarkMetrics(b *testing.B) {
 	var (
 		r  = NewRegistry()

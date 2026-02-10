@@ -14,31 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !ios && !js && !wasip1 && !tinygo
-// +build !ios,!js,!wasip1,!tinygo
+//go:build ios || js || wasip1 || tinygo
+// +build ios js wasip1 tinygo
 
-package metrics
+package sysmetrics
 
-import (
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/shirou/gopsutil/cpu"
-)
-
-// ReadCPUStats retrieves the current CPU stats.
-func ReadCPUStats(stats *CPUStats) {
-	// passing false to request all cpu times
-	timeStats, err := cpu.Times(false)
-	if err != nil {
-		log.Error("Could not read cpu stats", "err", err)
-		return
-	}
-	if len(timeStats) == 0 {
-		log.Error("Empty cpu stats")
-		return
-	}
-	// requesting all cpu times will always return an array with only one time stats entry
-	timeStat := timeStats[0]
-	stats.GlobalTime = timeStat.User + timeStat.Nice + timeStat.System
-	stats.GlobalWait = timeStat.Iowait
-	stats.LocalTime = getProcessCPUTime()
-}
+// ReadCPUStats retrieves the current CPU stats. Internally this uses `gosigar`,
+// which is not supported on the platforms in this file.
+func ReadCPUStats(stats *CPUStats) {}

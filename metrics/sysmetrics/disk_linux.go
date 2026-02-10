@@ -16,7 +16,7 @@
 
 // Contains the Linux implementation of process disk IO counter retrieval.
 
-package metrics
+package sysmetrics
 
 import (
 	"bufio"

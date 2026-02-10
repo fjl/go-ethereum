@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var _ Histogram = (*runtimeHistogram)(nil)
+var _ Histogram = (*RuntimeHistogram)(nil)
 
 type runtimeHistogramTest struct {
 	h metrics.Float64Histogram

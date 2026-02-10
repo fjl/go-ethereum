@@ -17,7 +17,7 @@
 //go:build !linux
 // +build !linux
 
-package metrics
+package sysmetrics
 
 import "errors"
 

@@ -62,6 +62,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/ethereum/go-ethereum/metrics/influxdb"
+	"github.com/ethereum/go-ethereum/metrics/sysmetrics"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -2188,7 +2189,7 @@ func SetupMetrics(cfg *metrics.Config) {
 	}
 
 	// Enable system metrics collection.
-	go metrics.CollectProcessMetrics(3 * time.Second)
+	go sysmetrics.CollectProcessMetrics(3 * time.Second)
 }
 
 // SplitTagsFlag parses a comma-separated list of k=v metrics tags.

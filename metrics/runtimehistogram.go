@@ -7,32 +7,40 @@ import (
 	"sync/atomic"
 )
 
-func getOrRegisterRuntimeHistogram(name string, scale float64, r Registry) *runtimeHistogram {
+// GetOrRegisterRuntimeHistogram returns an existing histogram or creates and registers
+// a new one for runtime metrics. The scale factor is applied to all bucket boundaries.
+func GetOrRegisterRuntimeHistogram(name string, scale float64, r Registry) *RuntimeHistogram {
 	if r == nil {
 		r = DefaultRegistry
 	}
-	return r.GetOrRegister(name, func() any { return newRuntimeHistogram(scale) }).(*runtimeHistogram)
+	return r.GetOrRegister(name, func() any { return newRuntimeHistogram(scale) }).(*RuntimeHistogram)
 }
 
-// runtimeHistogram wraps a runtime/metrics histogram.
-type runtimeHistogram struct {
+// RuntimeHistogram wraps a runtime/metrics histogram.
+type RuntimeHistogram struct {
 	v           atomic.Pointer[metrics.Float64Histogram]
 	scaleFactor float64
 }
 
-func newRuntimeHistogram(scale float64) *runtimeHistogram {
-	h := &runtimeHistogram{scaleFactor: scale}
+func newRuntimeHistogram(scale float64) *RuntimeHistogram {
+	h := &RuntimeHistogram{scaleFactor: scale}
 	h.update(new(metrics.Float64Histogram))
 	return h
 }
 
-func RuntimeHistogramFromData(scale float64, hist *metrics.Float64Histogram) *runtimeHistogram {
-	h := &runtimeHistogram{scaleFactor: scale}
+// RuntimeHistogramFromData creates a histogram from existing data.
+func RuntimeHistogramFromData(scale float64, hist *metrics.Float64Histogram) *RuntimeHistogram {
+	h := &RuntimeHistogram{scaleFactor: scale}
 	h.update(hist)
 	return h
 }
 
-func (h *runtimeHistogram) update(mh *metrics.Float64Histogram) {
+// UpdateFrom updates the histogram from a runtime/metrics histogram.
+func (h *RuntimeHistogram) UpdateFrom(mh *metrics.Float64Histogram) {
+	h.update(mh)
+}
+
+func (h *RuntimeHistogram) update(mh *metrics.Float64Histogram) {
 	if mh == nil {
 		// The update value can be nil if the current Go version doesn't support a
 		// requested metric. It's just easier to handle nil here than putting
@@ -51,15 +59,15 @@ func (h *runtimeHistogram) update(mh *metrics.Float64Histogram) {
 	h.v.Store(&s)
 }
 
-func (h *runtimeHistogram) Clear() {
+func (h *RuntimeHistogram) Clear() {
 	panic("runtimeHistogram does not support Clear")
 }
-func (h *runtimeHistogram) Update(int64) {
+func (h *RuntimeHistogram) Update(int64) {
 	panic("runtimeHistogram does not support Update")
 }
 
 // Snapshot returns a non-changing copy of the histogram.
-func (h *runtimeHistogram) Snapshot() HistogramSnapshot {
+func (h *RuntimeHistogram) Snapshot() HistogramSnapshot {
 	hist := h.v.Load()
 	return newRuntimeHistogramSnapshot(hist)
 }
